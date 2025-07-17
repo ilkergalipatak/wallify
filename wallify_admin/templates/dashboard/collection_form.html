@@ -1,0 +1,42 @@
+{% extends 'dashboard/base.html' %}
+{% load crispy_forms_tags %}
+
+{% block title %}{{ title }} - Wallify CDN Yönetimi{% endblock %}
+
+{% block breadcrumb %}
+<li class="breadcrumb-item"><a href="{% url 'dashboard:home' %}">Ana Sayfa</a></li>
+<li class="breadcrumb-item"><a href="{% url 'dashboard:collection_list' %}">Koleksiyonlar</a></li>
+<li class="breadcrumb-item active">{{ title }}</li>
+{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-md-8 mx-auto">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="card-title mb-0">{{ title }}</h5>
+            </div>
+            <div class="card-body">
+                <form method="post">
+                    {% csrf_token %}
+                    {{ form|crispy }}
+                    <div class="mt-4">
+                        <button type="submit" class="btn btn-primary">
+                            <i class="fas fa-save me-2"></i> Kaydet
+                        </button>
+                        {% if collection %}
+                            <a href="{% url 'dashboard:collection_detail' pk %}" class="btn btn-outline-secondary">
+                                <i class="fas fa-times me-2"></i> İptal
+                            </a>
+                        {% else %}
+                            <a href="{% url 'dashboard:collection_list' %}" class="btn btn-outline-secondary">
+                                <i class="fas fa-times me-2"></i> İptal
+                            </a>
+                        {% endif %}
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %} 

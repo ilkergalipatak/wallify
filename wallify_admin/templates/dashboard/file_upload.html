@@ -1,0 +1,113 @@
+{% extends 'dashboard/base.html' %}
+{% load crispy_forms_tags %}
+
+{% block title %}Dosya Yükleme - Wallify CDN Yönetimi{% endblock %}
+
+{% block breadcrumb %}
+<li class="breadcrumb-item"><a href="{% url 'dashboard:home' %}">Ana Sayfa</a></li>
+<li class="breadcrumb-item active">Dosya Yükleme</li>
+{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-md-8 mx-auto">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="card-title mb-0">Dosya Yükleme</h5>
+            </div>
+            <div class="card-body">
+                <form method="post" enctype="multipart/form-data">
+                    {% csrf_token %}
+                    {{ form|crispy }}
+                    <div class="mt-4">
+                        <button type="submit" class="btn btn-primary">
+                            <i class="fas fa-upload me-2"></i> Yükle
+                        </button>
+                        <a href="{% url 'dashboard:file_list' %}" class="btn btn-outline-secondary">
+                            <i class="fas fa-times me-2"></i> İptal
+                        </a>
+                    </div>
+                </form>
+            </div>
+        </div>
+        
+        <div class="card mt-4">
+            <div class="card-header">
+                <h5 class="card-title mb-0">Dosya Yükleme Kuralları</h5>
+            </div>
+            <div class="card-body">
+                <ul class="mb-0">
+                    <li>Maksimum dosya boyutu: 10MB</li>
+                    <li>İzin verilen dosya türleri: JPG, PNG, GIF, WEBP</li>
+                    <li>Dosya adları özel karakter içermemelidir</li>
+                    <li>Dosya adları en az 3, en fazla 255 karakter olmalıdır</li>
+                    <li>Aynı isimde bir dosya varsa, otomatik olarak yeni bir isim atanır</li>
+                </ul>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row mt-4">
+    <div class="col-md-8 mx-auto">
+        <div class="alert alert-info">
+            <div class="d-flex align-items-center">
+                <i class="fas fa-info-circle fa-2x me-3"></i>
+                <div>
+                    <h5 class="alert-heading">Toplu Yükleme</h5>
+                    <p class="mb-0">Birden fazla dosya yüklemek için <a href="{% url 'dashboard:bulk_upload' %}{% if request.GET.collection %}?collection={{ request.GET.collection }}{% endif %}" class="alert-link">Toplu Yükleme</a> sayfasını kullanabilirsiniz.</p>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        // URL parametrelerinden koleksiyon ID'sini al
+        const urlParams = new URLSearchParams(window.location.search);
+        const collectionId = urlParams.get('collection');
+        
+        // Eğer koleksiyon ID'si varsa, form alanını otomatik olarak seç
+        if (collectionId) {
+            const collectionSelect = document.getElementById('id_collection');
+            if (collectionSelect) {
+                // Tüm seçenekleri kontrol et
+                for (let i = 0; i < collectionSelect.options.length; i++) {
+                    if (collectionSelect.options[i].value === collectionId) {
+                        collectionSelect.selectedIndex = i;
+                        break;
+                    }
+                }
+            }
+        }
+        
+        // Dosya seçildiğinde önizleme göster
+        const fileInput = document.getElementById('id_file');
+        if (fileInput) {
+            fileInput.addEventListener('change', function() {
+                const file = this.files[0];
+                if (file) {
+                    // Dosya boyutu kontrolü
+                    const maxSize = 10 * 1024 * 1024; // 10MB
+                    if (file.size > maxSize) {
+                        alert('Dosya boyutu 10MB\'dan büyük olamaz.');
+                        this.value = '';
+                        return;
+                    }
+                    
+                    // Dosya türü kontrolü
+                    const allowedTypes = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
+                    if (!allowedTypes.includes(file.type)) {
+                        alert('Sadece JPG, PNG, GIF ve WEBP dosyaları yükleyebilirsiniz.');
+                        this.value = '';
+                        return;
+                    }
+                }
+            });
+        }
+    });
+</script>
+{% endblock %} 

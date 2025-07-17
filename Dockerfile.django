@@ -1,0 +1,25 @@
+FROM python:3.10-slim
+
+WORKDIR /app
+
+# Gerekli paketleri kur
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+# Uygulama dosyalarını kopyala
+COPY wallify_admin ./wallify_admin
+COPY cdn ./cdn
+
+# PostgreSQL'in başlamasını beklemek için wait-for-it script'ini ekle
+RUN apt-get update && apt-get install -y wget
+RUN wget -O /usr/local/bin/wait-for-it.sh https://raw.githubusercontent.com/vishnubob/wait-for-it/master/wait-for-it.sh
+RUN chmod +x /usr/local/bin/wait-for-it.sh
+
+# Port aç
+EXPOSE 8000
+
+# Çalışma dizinini değiştir
+WORKDIR /app/wallify_admin
+
+# Uygulama başlatma komutu
+CMD ["python", "manage.py", "runserver", "0.0.0.0:8000"] 

@@ -1,0 +1,117 @@
+{% extends 'dashboard/base.html' %}
+{% load dashboard_filters %}
+
+{% block title %}{{ file.name }} - Wallify CDN Yönetimi{% endblock %}
+
+{% block breadcrumb %}
+<li class="breadcrumb-item"><a href="{% url 'dashboard:home' %}">Ana Sayfa</a></li>
+<li class="breadcrumb-item"><a href="{% url 'dashboard:file_list' %}">Dosyalar</a></li>
+<li class="breadcrumb-item active">{{ file.name }}</li>
+{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h1>{{ file.name }}</h1>
+    <div>
+        <a href="{% url 'dashboard:file_edit' pk %}" class="btn btn-primary me-2">
+            <i class="fas fa-edit me-2"></i> Düzenle
+        </a>
+        <a href="{% url 'dashboard:file_delete' pk %}" class="btn btn-outline-danger">
+            <i class="fas fa-trash me-2"></i> Sil
+        </a>
+    </div>
+</div>
+
+<div class="row">
+    <div class="col-md-8">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="card-title mb-0">Önizleme</h5>
+            </div>
+            <div class="card-body text-center">
+                {% if file %}
+                    {% with path=file.collection|default:''|add:'/'|add:file.name %}
+                    <img src="{{ settings.CDN_API_URL }}/cdn/{{ path }}?token={{ request.session.api_token }}" class="img-fluid" alt="{{ file.name }}">
+                    {% endwith %}
+                {% else %}
+                    <div class="alert alert-warning">
+                        <i class="fas fa-exclamation-triangle me-2"></i> Dosya önizlemesi mevcut değil.
+                    </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+    
+    <div class="col-md-4">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="card-title mb-0">Dosya Bilgileri</h5>
+            </div>
+            <div class="card-body">
+                <table class="table table-striped">
+                    <tbody>
+                        <tr>
+                            <th>Dosya Adı:</th>
+                            <td>{{ file.name }}</td>
+                        </tr>
+                        <tr>
+                            <th>Koleksiyon:</th>
+                            <td>{{ file.collection|default:"Ana Dizin" }}</td>
+                        </tr>
+                        <tr>
+                            <th>Boyut:</th>
+                            <td>{{ file.size_formatted }}</td>
+                        </tr>
+                        <tr>
+                            <th>Tam Yol:</th>
+                            <td class="text-break">{{ file.path }}</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+        
+        <div class="card mt-4">
+            <div class="card-header">
+                <h5 class="card-title mb-0">CDN URL</h5>
+            </div>
+            <div class="card-body">
+                <div class="input-group">
+                    {% with path=file.collection|default:''|add:'/'|add:file.name %}
+                    <input type="text" class="form-control" value="{{ settings.CDN_API_URL }}/cdn/{{ path }}?token={{ request.session.api_token }}" id="cdnUrl" readonly>
+                    {% endwith %}
+                    <button class="btn btn-outline-secondary" type="button" onclick="copyToClipboard('cdnUrl')">
+                        <i class="fas fa-copy"></i>
+                    </button>
+                </div>
+                <small class="text-muted mt-2 d-block">
+                    <i class="fas fa-info-circle me-1"></i> Bu URL'yi kullanmak için token parametresi gereklidir.
+                </small>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    function copyToClipboard(elementId) {
+        const element = document.getElementById(elementId);
+        element.select();
+        document.execCommand('copy');
+        
+        // Kopyalandı bildirimi
+        const button = element.nextElementSibling;
+        const originalHtml = button.innerHTML;
+        button.innerHTML = '<i class="fas fa-check"></i>';
+        button.classList.add('btn-success');
+        button.classList.remove('btn-outline-secondary');
+        
+        setTimeout(() => {
+            button.innerHTML = originalHtml;
+            button.classList.remove('btn-success');
+            button.classList.add('btn-outline-secondary');
+        }, 2000);
+    }
+</script>
+{% endblock %} 

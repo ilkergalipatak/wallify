@@ -1,0 +1,143 @@
+{% extends 'dashboard/base.html' %}
+{% load crispy_forms_tags %}
+
+{% block title %}Toplu Dosya Yükleme - Wallify CDN Yönetimi{% endblock %}
+
+{% block breadcrumb %}
+<li class="breadcrumb-item"><a href="{% url 'dashboard:home' %}">Ana Sayfa</a></li>
+<li class="breadcrumb-item active">Toplu Dosya Yükleme</li>
+{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-md-8 mx-auto">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="card-title mb-0">Toplu Dosya Yükleme</h5>
+            </div>
+            <div class="card-body">
+                <form method="post" enctype="multipart/form-data" id="bulkUploadForm">
+                    {% csrf_token %}
+                    
+                    <div class="mb-3">
+                        <label for="id_collection" class="form-label">Koleksiyon</label>
+                        {{ form.collection }}
+                        <div class="form-text">Dosyaların yükleneceği koleksiyonu seçin.</div>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label for="id_files" class="form-label">Dosyalar</label>
+                        <input type="file" name="files[]" multiple class="form-control" id="id_files" required>
+                        <div class="form-text">Birden fazla dosya seçmek için CTRL tuşunu basılı tutarak seçim yapabilirsiniz.</div>
+                    </div>
+                    
+                    <div class="mt-4">
+                        <button type="submit" class="btn btn-primary">
+                            <i class="fas fa-cloud-upload-alt me-2"></i> Toplu Yükle
+                        </button>
+                        <a href="{% url 'dashboard:file_list' %}" class="btn btn-outline-secondary">
+                            <i class="fas fa-times me-2"></i> İptal
+                        </a>
+                    </div>
+                </form>
+            </div>
+        </div>
+        
+        <div class="card mt-4">
+            <div class="card-header">
+                <h5 class="card-title mb-0">Yükleme Durumu</h5>
+            </div>
+            <div class="card-body">
+                <div class="progress mb-3" style="height: 25px; display: none;" id="uploadProgress">
+                    <div class="progress-bar progress-bar-striped progress-bar-animated" role="progressbar" style="width: 0%;" id="uploadProgressBar">0%</div>
+                </div>
+                <div id="uploadStatus"></div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        // URL parametrelerinden koleksiyon ID'sini al
+        const urlParams = new URLSearchParams(window.location.search);
+        const collectionId = urlParams.get('collection');
+        
+        // Eğer koleksiyon ID'si varsa, form alanını otomatik olarak seç
+        if (collectionId) {
+            const collectionSelect = document.getElementById('id_collection');
+            if (collectionSelect) {
+                // Tüm seçenekleri kontrol et
+                for (let i = 0; i < collectionSelect.options.length; i++) {
+                    if (collectionSelect.options[i].value === collectionId) {
+                        collectionSelect.selectedIndex = i;
+                        break;
+                    }
+                }
+            }
+        }
+        
+        // Dosya seçildiğinde önizleme ve kontrol
+        const fileInput = document.getElementById('id_files');
+        if (fileInput) {
+            fileInput.addEventListener('change', function() {
+                const files = this.files;
+                if (files.length > 0) {
+                    const maxSize = 10 * 1024 * 1024; // 10MB
+                    const allowedTypes = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
+                    
+                    let invalidFiles = [];
+                    
+                    for (let i = 0; i < files.length; i++) {
+                        const file = files[i];
+                        
+                        // Dosya boyutu kontrolü
+                        if (file.size > maxSize) {
+                            invalidFiles.push(`${file.name} (boyut çok büyük)`);
+                        }
+                        
+                        // Dosya türü kontrolü
+                        if (!allowedTypes.includes(file.type)) {
+                            invalidFiles.push(`${file.name} (desteklenmeyen format)`);
+                        }
+                    }
+                    
+                    if (invalidFiles.length > 0) {
+                        alert(`Aşağıdaki dosyalar yüklenemez:\n${invalidFiles.join('\n')}`);
+                        this.value = '';
+                    }
+                }
+            });
+        }
+        
+        // Form gönderildiğinde ilerleme çubuğunu göster
+        const form = document.getElementById('bulkUploadForm');
+        const progressBar = document.getElementById('uploadProgressBar');
+        const progressContainer = document.getElementById('uploadProgress');
+        const statusContainer = document.getElementById('uploadStatus');
+        
+        if (form) {
+            form.addEventListener('submit', function() {
+                const files = document.getElementById('id_files').files;
+                if (files.length > 0) {
+                    progressContainer.style.display = 'flex';
+                    statusContainer.innerHTML = `<div class="alert alert-info">Yükleniyor... Lütfen bekleyin.</div>`;
+                    
+                    // İlerleme çubuğunu simüle et (gerçek ilerlemeyi izlemek için AJAX gerekir)
+                    let progress = 0;
+                    const interval = setInterval(function() {
+                        progress += 5;
+                        if (progress > 90) {
+                            clearInterval(interval);
+                        }
+                        progressBar.style.width = progress + '%';
+                        progressBar.textContent = progress + '%';
+                    }, 500);
+                }
+            });
+        }
+    });
+</script>
+{% endblock %} 

@@ -1,0 +1,222 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}Wallify CDN Yönetim Paneli{% endblock %}</title>
+    
+    <!-- Bootstrap CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    
+    <!-- Font Awesome -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <!-- Custom CSS -->
+    {% block extra_css %}{% endblock %}
+    
+    <style>
+        :root {
+            --primary: #3498db;
+            --secondary: #2c3e50;
+        }
+        
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: #f8f9fa;
+        }
+        
+        .sidebar {
+            background-color: var(--secondary);
+            min-height: 100vh;
+            color: white;
+        }
+        
+        .sidebar .nav-link {
+            color: rgba(255, 255, 255, 0.8);
+            padding: 10px 15px;
+            margin-bottom: 5px;
+            border-radius: 5px;
+        }
+        
+        .sidebar .nav-link:hover {
+            color: white;
+            background-color: rgba(255, 255, 255, 0.1);
+        }
+        
+        .sidebar .nav-link.active {
+            color: white;
+            background-color: var(--primary);
+        }
+        
+        .sidebar .nav-link i {
+            margin-right: 10px;
+            width: 20px;
+            text-align: center;
+        }
+        
+        .main-content {
+            padding: 20px;
+        }
+        
+        .navbar {
+            background-color: white;
+            box-shadow: 0 2px 5px rgba(0, 0, 0, 0.05);
+        }
+        
+        .navbar-brand {
+            color: var(--secondary);
+            font-weight: bold;
+        }
+        
+        .card {
+            border: none;
+            border-radius: 10px;
+            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.05);
+            margin-bottom: 20px;
+        }
+        
+        .card-header {
+            background-color: white;
+            border-bottom: 1px solid rgba(0, 0, 0, 0.05);
+            font-weight: bold;
+        }
+        
+        .btn-primary {
+            background-color: var(--primary);
+            border-color: var(--primary);
+        }
+        
+        .btn-primary:hover {
+            background-color: #2980b9;
+            border-color: #2980b9;
+        }
+        
+        .stats-card {
+            border-left: 4px solid var(--primary);
+        }
+        
+        .stats-card i {
+            font-size: 2rem;
+            color: var(--primary);
+        }
+        
+        .table-responsive {
+            border-radius: 10px;
+            overflow: hidden;
+        }
+        
+        .page-header {
+            margin-bottom: 20px;
+        }
+        
+        .page-header h1 {
+            color: var(--secondary);
+            font-weight: 600;
+        }
+    </style>
+</head>
+<body>
+    {% if user.is_authenticated or username %}
+    <div class="container-fluid">
+        <div class="row">
+            <!-- Sidebar -->
+            <div class="col-md-3 col-lg-2 d-md-block sidebar collapse">
+                <div class="position-sticky pt-3">
+                    <div class="text-center mb-4">
+                        <h3>Wallify CDN</h3>
+                        <p class="small">Yönetici Paneli</p>
+                    </div>
+                    
+                    <ul class="nav flex-column">
+                        <li class="nav-item">
+                            <a class="nav-link {% if request.path == '/' %}active{% endif %}" href="{% url 'dashboard:home' %}">
+                                <i class="fas fa-home"></i> Ana Sayfa
+                            </a>
+                        </li>
+                        <li class="nav-item">
+                            <a class="nav-link {% if 'collections' in request.path %}active{% endif %}" href="{% url 'dashboard:collection_list' %}">
+                                <i class="fas fa-folder"></i> Koleksiyonlar
+                            </a>
+                        </li>
+                        <li class="nav-item">
+                            <a class="nav-link {% if request.path == '/files/' %}active{% endif %}" href="{% url 'dashboard:file_list' %}">
+                                <i class="fas fa-file"></i> Dosyalar
+                            </a>
+                        </li>
+                        <li class="nav-item">
+                            <a class="nav-link {% if request.path == '/files/upload/' %}active{% endif %}" href="{% url 'dashboard:file_upload' %}">
+                                <i class="fas fa-upload"></i> Dosya Yükle
+                            </a>
+                        </li>
+                        <li class="nav-item">
+                            <a class="nav-link {% if request.path == '/files/bulk-upload/' %}active{% endif %}" href="{% url 'dashboard:bulk_upload' %}">
+                                <i class="fas fa-cloud-upload-alt"></i> Toplu Yükleme
+                            </a>
+                        </li>
+                        <!-- <li class="nav-item">
+                            <a class="nav-link {% if 'sync' in request.path %}active{% endif %}" href="{% url 'dashboard:sync_with_cdn' %}">
+                                <i class="fas fa-sync"></i> CDN ile Senkronize Et
+                            </a>
+                        </li> -->
+                    </ul>
+                    
+                    <hr>
+                    
+                    <div class="text-center">
+                        <a href="{% url 'logout' %}" class="btn btn-outline-light btn-sm">
+                            <i class="fas fa-sign-out-alt"></i> Çıkış Yap
+                        </a>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Main Content -->
+            <div class="col-md-9 ms-sm-auto col-lg-10 px-md-4 main-content">
+                <!-- Navbar -->
+                <nav class="navbar navbar-expand-lg navbar-light mb-4">
+                    <div class="container-fluid">
+                        <button class="navbar-toggler d-md-none collapsed" type="button" data-bs-toggle="collapse" data-bs-target=".sidebar" aria-controls="sidebarMenu" aria-expanded="false" aria-label="Toggle navigation">
+                            <span class="navbar-toggler-icon"></span>
+                        </button>
+                        <a class="navbar-brand" href="{% url 'dashboard:home' %}">
+                            <i class="fas fa-cloud"></i> Wallify CDN Yönetici Paneli
+                        </a>
+                        <div class="d-flex">
+                            <div class="dropdown">
+                                <a class="nav-link dropdown-toggle" href="#" id="userDropdown" role="button" data-bs-toggle="dropdown" aria-expanded="false">
+                                    <i class="fas fa-user-shield"></i> {{ username }}
+                                </a>
+                                <ul class="dropdown-menu dropdown-menu-end" aria-labelledby="userDropdown">
+                                    <li><a class="dropdown-item" href="{% url 'logout' %}">Çıkış Yap</a></li>
+                                </ul>
+                            </div>
+                        </div>
+                    </div>
+                </nav>
+                
+                <!-- Messages -->
+                {% if messages %}
+                    {% for message in messages %}
+                        <div class="alert alert-{{ message.tags }} alert-dismissible fade show" role="alert">
+                            {{ message }}
+                            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+                        </div>
+                    {% endfor %}
+                {% endif %}
+                
+                <!-- Content -->
+                {% block content %}{% endblock %}
+            </div>
+        </div>
+    </div>
+    {% else %}
+        {% block login_content %}{% endblock %}
+    {% endif %}
+    
+    <!-- Bootstrap JS Bundle -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    
+    <!-- Custom JS -->
+    {% block extra_js %}{% endblock %}
+</body>
+</html> 

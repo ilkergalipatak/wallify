@@ -1,0 +1,157 @@
+{% extends 'dashboard/base.html' %}
+{% load dashboard_filters %}
+
+{% block title %}Ana Sayfa - Wallify CDN Yönetimi{% endblock %}
+
+{% block breadcrumb %}
+<li class="breadcrumb-item active">Ana Sayfa</li>
+{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h1>Kontrol Paneli</h1>
+    <div>
+        <a href="{% url 'dashboard:file_upload' %}" class="btn btn-primary me-2">
+            <i class="fas fa-upload me-2"></i> Dosya Yükle
+        </a>
+        <a href="{% url 'dashboard:collection_create' %}" class="btn btn-outline-primary">
+            <i class="fas fa-folder-plus me-2"></i> Koleksiyon Oluştur
+        </a>
+    </div>
+</div>
+
+<!-- İstatistikler -->
+<div class="row mb-4">
+    <div class="col-md-3">
+        <div class="card stats-card h-100">
+            <div class="card-body">
+                <div class="d-flex justify-content-between align-items-center">
+                    <div>
+                        <h6 class="card-subtitle text-muted mb-1">Toplam Koleksiyon</h6>
+                        <h2 class="card-title mb-0">{{ collection_count }}</h2>
+                    </div>
+                    <i class="fas fa-folder"></i>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card stats-card h-100">
+            <div class="card-body">
+                <div class="d-flex justify-content-between align-items-center">
+                    <div>
+                        <h6 class="card-subtitle text-muted mb-1">Toplam Dosya</h6>
+                        <h2 class="card-title mb-0">{{ file_count }}</h2>
+                    </div>
+                    <i class="fas fa-file"></i>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card stats-card h-100">
+            <div class="card-body">
+                <div class="d-flex justify-content-between align-items-center">
+                    <div>
+                        <h6 class="card-subtitle text-muted mb-1">Toplam Boyut</h6>
+                        <h2 class="card-title mb-0">{{ total_size }}</h2>
+                    </div>
+                    <i class="fas fa-hdd"></i>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card stats-card h-100">
+            <div class="card-body">
+                <div class="d-flex justify-content-between align-items-center">
+                    <div>
+                        <h6 class="card-subtitle text-muted mb-1">Son Yükleme</h6>
+                        <h2 class="card-title mb-0">
+                            {% if last_upload_date %}
+                                {{ last_upload_date|date:"d.m.Y" }}
+                            {% else %}
+                                -
+                            {% endif %}
+                        </h2>
+                    </div>
+                    <i class="fas fa-calendar"></i>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row">
+    <!-- Koleksiyonlar -->
+    <div class="col-md-6">
+        <div class="card mb-4">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h5 class="card-title mb-0">Koleksiyonlar</h5>
+                <a href="{% url 'dashboard:collection_list' %}" class="btn btn-sm btn-outline-primary">Tümünü Gör</a>
+            </div>
+            <div class="card-body p-0">
+                <div class="list-group list-group-flush">
+                    {% for collection in collections %}
+                        <a href="{% url 'dashboard:collection_detail' forloop.counter %}" class="list-group-item list-group-item-action d-flex justify-content-between align-items-center">
+                            <div>
+                                <i class="fas fa-folder me-2 text-primary"></i>
+                                {{ collection.name }}
+                            </div>
+                            <span class="badge bg-primary rounded-pill">{{ collection.file_count }} dosya</span>
+                        </a>
+                    {% empty %}
+                        <div class="list-group-item text-center py-4">
+                            <i class="fas fa-folder-open fa-3x text-muted mb-3"></i>
+                            <p>Henüz koleksiyon bulunmuyor.</p>
+                            <a href="{% url 'dashboard:collection_create' %}" class="btn btn-sm btn-primary">
+                                <i class="fas fa-folder-plus me-2"></i> Koleksiyon Oluştur
+                            </a>
+                        </div>
+                    {% endfor %}
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Son Yüklenen Dosyalar -->
+    <div class="col-md-6">
+        <div class="card mb-4">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h5 class="card-title mb-0">Son Yüklenen Dosyalar</h5>
+                <a href="{% url 'dashboard:file_list' %}" class="btn btn-sm btn-outline-primary">Tümünü Gör</a>
+            </div>
+            <div class="card-body p-0">
+                <div class="list-group list-group-flush">
+                    {% for file in recent_files %}
+                        {% with filename=file|last_part:'/' %}
+                        <div class="list-group-item">
+                            <div class="d-flex align-items-center">
+                                <div class="me-3" style="width: 50px; height: 50px;">
+                                    <img src="{{ file|safe }}&width=100" class="img-fluid" alt="{{ filename }}" style="max-height: 50px; max-width: 50px; object-fit: cover;">
+                                </div>
+                                <div class="flex-grow-1">
+                                    <h6 class="mb-0 text-truncate" style="max-width: 200px;">{{ filename }}</h6>
+                                    <small class="text-muted">{{ file.size_formatted }}</small>
+                                </div>
+                                <a href="{{ file|safe }}" target="_blank" class="btn btn-sm btn-outline-secondary">
+                                    <i class="fas fa-eye"></i>
+                                </a>
+                            </div>
+                        </div>
+                        {% endwith %}
+                    {% empty %}
+                        <div class="list-group-item text-center py-4">
+                            <i class="fas fa-file fa-3x text-muted mb-3"></i>
+                            <p>Henüz dosya bulunmuyor.</p>
+                            <a href="{% url 'dashboard:file_upload' %}" class="btn btn-sm btn-primary">
+                                <i class="fas fa-upload me-2"></i> Dosya Yükle
+                            </a>
+                        </div>
+                    {% endfor %}
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %} 

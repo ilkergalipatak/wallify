@@ -1,0 +1,322 @@
+{% extends 'dashboard/base.html' %}
+
+{% block title %}Dosyalar - Wallify CDN Yönetimi{% endblock %}
+
+{% block breadcrumb %}
+<li class="breadcrumb-item"><a href="{% url 'dashboard:home' %}">Ana Sayfa</a></li>
+<li class="breadcrumb-item active">Dosyalar</li>
+{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h1>Dosyalar</h1>
+    <div>
+        <a href="{% url 'dashboard:file_upload' %}" class="btn btn-primary me-2">
+            <i class="fas fa-upload me-2"></i> Dosya Yükle
+        </a>
+        <a href="{% url 'dashboard:bulk_upload' %}" class="btn btn-outline-primary">
+            <i class="fas fa-cloud-upload-alt me-2"></i> Toplu Yükleme
+        </a>
+    </div>
+</div>
+
+<div class="card mb-4">
+    <div class="card-header">
+        <h5 class="card-title mb-0">Filtreler</h5>
+    </div>
+    <div class="card-body">
+        <form method="get" class="row g-3">
+            <div class="col-md-4">
+                <label for="collection" class="form-label">Koleksiyon</label>
+                <select name="collection" id="collection" class="form-select">
+                    <option value="">Tümü</option>
+                    <option value="none" {% if collection_filter == 'none' %}selected{% endif %}>Ana Dizin</option>
+                    {% for collection in collections %}
+                        <option value="{{ collection.name }}" {% if collection_filter == collection.name %}selected{% endif %}>{{ collection.name }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-md-4">
+                <label for="search" class="form-label">Arama</label>
+                <input type="text" name="search" id="search" class="form-control" placeholder="Dosya adı ara..." value="{{ search_query|default:'' }}">
+            </div>
+            <div class="col-md-4">
+                <label for="sort" class="form-label">Sıralama</label>
+                <select name="sort" id="sort" class="form-select">
+                    <option value="name" {% if sort_by == 'name' %}selected{% endif %}>İsim (A-Z)</option>
+                    <option value="-name" {% if sort_by == '-name' %}selected{% endif %}>İsim (Z-A)</option>
+                </select>
+            </div>
+            <div class="col-12">
+                <button type="submit" class="btn btn-primary">
+                    <i class="fas fa-filter me-2"></i> Filtrele
+                </button>
+                <a href="{% url 'dashboard:file_list' %}" class="btn btn-outline-secondary">
+                    <i class="fas fa-times me-2"></i> Temizle
+                </a>
+            </div>
+        </form>
+    </div>
+</div>
+
+{% if files %}
+    <div class="card">
+        <div class="card-header">
+            <div class="d-flex justify-content-between align-items-center">
+                <h5 class="card-title mb-0">Dosyalar ({{ files.paginator.count }})</h5>
+                <div class="btn-group">
+                    <button type="button" class="btn btn-sm btn-outline-secondary" id="viewGrid">
+                        <i class="fas fa-th"></i>
+                    </button>
+                    <button type="button" class="btn btn-sm btn-outline-secondary" id="viewList">
+                        <i class="fas fa-list"></i>
+                    </button>
+                </div>
+            </div>
+        </div>
+        <div class="card-body">
+            <!-- Grid Görünümü -->
+            <div class="row" id="gridView">
+                {% for file in files %}
+                <div class="col-md-3 mb-4">
+                    <div class="card h-100">
+                        <div class="card-img-top text-center p-2" style="height: 150px; display: flex; align-items: center; justify-content: center;">
+                            {% if file.is_image %}
+                                <img src="{{ file.url }}" class="img-fluid" style="max-height: 140px;" alt="{{ file.name }}">
+                            {% else %}
+                                <i class="fas fa-file fa-5x text-muted"></i>
+                            {% endif %}
+                        </div>
+                        <div class="card-body">
+                            <h6 class="card-title text-truncate" title="{{ file.name }}">{{ file.name }}</h6>
+                            <p class="card-text small text-muted">{{ file.size_formatted }}</p>
+                            <p class="card-text small text-muted">
+                                {% if file.collection %}
+                                    <i class="fas fa-folder me-1"></i> {{ file.collection }}
+                                {% else %}
+                                    <i class="fas fa-folder me-1"></i> Ana Dizin
+                                {% endif %}
+                            </p>
+                        </div>
+                        <div class="card-footer bg-transparent">
+                            <div class="d-flex justify-content-between">
+                                <a href="{{ file.url }}" class="btn btn-sm btn-outline-primary" target="_blank">
+                                    <i class="fas fa-eye"></i>
+                                </a>
+                                <div>
+                                    <button class="btn btn-sm btn-outline-danger delete-file" data-path="{{ file.path }}" data-name="{{ file.name }}">
+                                        <i class="fas fa-trash"></i>
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+            
+            <!-- Liste Görünümü (Başlangıçta gizli) -->
+            <div class="table-responsive d-none" id="listView">
+                <table class="table table-hover">
+                    <thead>
+                        <tr>
+                            <th>Önizleme</th>
+                            <th>Dosya Adı</th>
+                            <th>Koleksiyon</th>
+                            <th>Boyut</th>
+                            <th>İşlemler</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for file in files %}
+                        <tr>
+                            <td>
+                                {% if file.is_image %}
+                                    <img src="{{ file.url }}" class="thumbnail" width="50" alt="{{ file.name }}">
+                                {% else %}
+                                    <i class="fas fa-file fa-2x text-muted"></i>
+                                {% endif %}
+                            </td>
+                            <td>
+                                <a href="{{ file.url }}" target="_blank">{{ file.name }}</a>
+                            </td>
+                            <td>
+                                {% if file.collection %}
+                                    {{ file.collection }}
+                                {% else %}
+                                    Ana Dizin
+                                {% endif %}
+                            </td>
+                            <td>{{ file.size_formatted }}</td>
+                            <td>
+                                <button class="btn btn-sm btn-outline-danger delete-file" data-path="{{ file.path }}" data-name="{{ file.name }}">
+                                    <i class="fas fa-trash"></i>
+                                </button>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            
+            <!-- Sayfalama -->
+            {% if files.paginator.num_pages > 1 %}
+            <div class="d-flex justify-content-center mt-4">
+                <nav aria-label="Sayfalama">
+                    <ul class="pagination">
+                        {% if files.has_previous %}
+                            <li class="page-item">
+                                <a class="page-link" href="?page=1{% if collection_filter %}&collection={{ collection_filter }}{% endif %}{% if search_query %}&search={{ search_query }}{% endif %}{% if sort_by %}&sort={{ sort_by }}{% endif %}" aria-label="İlk">
+                                    <span aria-hidden="true">&laquo;&laquo;</span>
+                                </a>
+                            </li>
+                            <li class="page-item">
+                                <a class="page-link" href="?page={{ files.previous_page_number }}{% if collection_filter %}&collection={{ collection_filter }}{% endif %}{% if search_query %}&search={{ search_query }}{% endif %}{% if sort_by %}&sort={{ sort_by }}{% endif %}" aria-label="Önceki">
+                                    <span aria-hidden="true">&laquo;</span>
+                                </a>
+                            </li>
+                        {% endif %}
+                        
+                        {% for num in files.paginator.page_range %}
+                            {% if files.number == num %}
+                                <li class="page-item active"><a class="page-link" href="?page={{ num }}{% if collection_filter %}&collection={{ collection_filter }}{% endif %}{% if search_query %}&search={{ search_query }}{% endif %}{% if sort_by %}&sort={{ sort_by }}{% endif %}">{{ num }}</a></li>
+                            {% elif num > files.number|add:'-3' and num < files.number|add:'3' %}
+                                <li class="page-item"><a class="page-link" href="?page={{ num }}{% if collection_filter %}&collection={{ collection_filter }}{% endif %}{% if search_query %}&search={{ search_query }}{% endif %}{% if sort_by %}&sort={{ sort_by }}{% endif %}">{{ num }}</a></li>
+                            {% endif %}
+                        {% endfor %}
+                        
+                        {% if files.has_next %}
+                            <li class="page-item">
+                                <a class="page-link" href="?page={{ files.next_page_number }}{% if collection_filter %}&collection={{ collection_filter }}{% endif %}{% if search_query %}&search={{ search_query }}{% endif %}{% if sort_by %}&sort={{ sort_by }}{% endif %}" aria-label="Sonraki">
+                                    <span aria-hidden="true">&raquo;</span>
+                                </a>
+                            </li>
+                            <li class="page-item">
+                                <a class="page-link" href="?page={{ files.paginator.num_pages }}{% if collection_filter %}&collection={{ collection_filter }}{% endif %}{% if search_query %}&search={{ search_query }}{% endif %}{% if sort_by %}&sort={{ sort_by }}{% endif %}" aria-label="Son">
+                                    <span aria-hidden="true">&raquo;&raquo;</span>
+                                </a>
+                            </li>
+                        {% endif %}
+                    </ul>
+                </nav>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+{% else %}
+    <div class="card">
+        <div class="card-body text-center py-5">
+            <i class="fas fa-file-image fa-4x text-muted mb-3"></i>
+            <h3>Dosya bulunamadı</h3>
+            <p class="text-muted">Arama kriterlerinize uygun dosya bulunamadı veya henüz dosya yüklenmemiş.</p>
+            <div class="mt-4">
+                <a href="{% url 'dashboard:file_upload' %}" class="btn btn-primary me-2">
+                    <i class="fas fa-upload me-2"></i> Dosya Yükle
+                </a>
+                <a href="{% url 'dashboard:file_list' %}" class="btn btn-outline-secondary">
+                    <i class="fas fa-times me-2"></i> Filtreleri Temizle
+                </a>
+            </div>
+        </div>
+    </div>
+{% endif %}
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        const viewGridBtn = document.getElementById('viewGrid');
+        const viewListBtn = document.getElementById('viewList');
+        const gridView = document.getElementById('gridView');
+        const listView = document.getElementById('listView');
+        
+        // Görünüm tercihini localStorage'dan al
+        const viewPreference = localStorage.getItem('fileViewPreference') || 'grid';
+        
+        // Başlangıç görünümünü ayarla
+        if (viewPreference === 'list') {
+            gridView.classList.add('d-none');
+            listView.classList.remove('d-none');
+            viewListBtn.classList.add('active');
+        } else {
+            gridView.classList.remove('d-none');
+            listView.classList.add('d-none');
+            viewGridBtn.classList.add('active');
+        }
+        
+        // Görünüm değiştirme butonları
+        viewGridBtn.addEventListener('click', function() {
+            gridView.classList.remove('d-none');
+            listView.classList.add('d-none');
+            viewGridBtn.classList.add('active');
+            viewListBtn.classList.remove('active');
+            localStorage.setItem('fileViewPreference', 'grid');
+        });
+        
+        viewListBtn.addEventListener('click', function() {
+            gridView.classList.add('d-none');
+            listView.classList.remove('d-none');
+            viewGridBtn.classList.remove('active');
+            viewListBtn.classList.add('active');
+            localStorage.setItem('fileViewPreference', 'list');
+        });
+        
+        // Dosya silme işlemi
+        const deleteButtons = document.querySelectorAll('.delete-file');
+        deleteButtons.forEach(button => {
+            button.addEventListener('click', function() {
+                const filePath = this.getAttribute('data-path');
+                const fileName = this.getAttribute('data-name');
+                
+                if (confirm(`"${fileName}" dosyasını silmek istediğinize emin misiniz?`)) {
+                    // AJAX ile silme isteği gönder
+                    fetch('/api/delete-file/', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'X-CSRFToken': getCookie('csrftoken')
+                        },
+                        body: JSON.stringify({
+                            path: filePath
+                        })
+                    })
+                    .then(response => response.json())
+                    .then(data => {
+                        if (data.success) {
+                            // Başarılı olursa, dosyayı DOM'dan kaldır
+                            const card = this.closest('.col-md-3') || this.closest('tr');
+                            card.remove();
+                            
+                            // Başarı mesajı göster
+                            alert(`"${fileName}" dosyası başarıyla silindi.`);
+                        } else {
+                            // Hata mesajı göster
+                            alert(`Hata: ${data.message}`);
+                        }
+                    })
+                    .catch(error => {
+                        console.error('Error:', error);
+                        alert('Bir hata oluştu. Lütfen tekrar deneyin.');
+                    });
+                }
+            });
+        });
+        
+        // CSRF token'ı almak için yardımcı fonksiyon
+        function getCookie(name) {
+            let cookieValue = null;
+            if (document.cookie && document.cookie !== '') {
+                const cookies = document.cookie.split(';');
+                for (let i = 0; i < cookies.length; i++) {
+                    const cookie = cookies[i].trim();
+                    if (cookie.substring(0, name.length + 1) === (name + '=')) {
+                        cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+                        break;
+                    }
+                }
+            }
+            return cookieValue;
+        }
+    });
+</script>
+{% endblock %} 

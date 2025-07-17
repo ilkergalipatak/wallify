@@ -1,0 +1,101 @@
+{% extends 'dashboard/base.html' %}
+{% load dashboard_filters %}
+
+{% block title %}{{ file.name }} Düzenle - Wallify CDN Yönetimi{% endblock %}
+
+{% block breadcrumb %}
+<li class="breadcrumb-item"><a href="{% url 'dashboard:home' %}">Ana Sayfa</a></li>
+<li class="breadcrumb-item"><a href="{% url 'dashboard:file_list' %}">Dosyalar</a></li>
+<li class="breadcrumb-item"><a href="{% url 'dashboard:file_detail' pk %}">{{ file.name }}</a></li>
+<li class="breadcrumb-item active">Düzenle</li>
+{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h1>{{ file.name }} Düzenle</h1>
+</div>
+
+<div class="row">
+    <div class="col-md-8">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="card-title mb-0">Dosya Bilgilerini Düzenle</h5>
+            </div>
+            <div class="card-body">
+                <form method="post">
+                    {% csrf_token %}
+                    
+                    <div class="mb-3">
+                        <label for="id_name" class="form-label">Dosya Adı</label>
+                        {{ form.name.errors }}
+                        <input type="text" name="name" value="{{ form.name.value }}" maxlength="255" class="form-control" required id="id_name">
+                        <div class="form-text text-muted">Dosya adını değiştirmek, CDN URL'sini de değiştirecektir.</div>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label for="id_collection" class="form-label">Koleksiyon</label>
+                        {{ form.collection.errors }}
+                        <select name="collection" class="form-select" id="id_collection">
+                            <option value="">Ana Dizin</option>
+                            {% for choice in form.fields.collection.choices %}
+                                {% if choice.0 %}
+                                    <option value="{{ choice.0 }}" {% if form.collection.value == choice.0 %}selected{% endif %}>{{ choice.1 }}</option>
+                                {% endif %}
+                            {% endfor %}
+                        </select>
+                        <div class="form-text text-muted">Dosyayı başka bir koleksiyona taşımak için seçin.</div>
+                    </div>
+                    
+                    <div class="d-flex justify-content-between">
+                        <a href="{% url 'dashboard:file_detail' pk %}" class="btn btn-outline-secondary">İptal</a>
+                        <button type="submit" class="btn btn-primary">Kaydet</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+    
+    <div class="col-md-4">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="card-title mb-0">Önizleme</h5>
+            </div>
+            <div class="card-body text-center">
+                {% if file %}
+                    {% with path=file.collection|default:''|add:'/'|add:file.name %}
+                    <img src="{{ settings.CDN_API_URL }}/cdn/{{ path }}?token={{ request.session.api_token }}&width=300" class="img-fluid" alt="{{ file.name }}">
+                    {% endwith %}
+                {% else %}
+                    <div class="alert alert-warning">
+                        <i class="fas fa-exclamation-triangle me-2"></i> Dosya önizlemesi mevcut değil.
+                    </div>
+                {% endif %}
+            </div>
+        </div>
+        
+        <div class="card mt-4">
+            <div class="card-header">
+                <h5 class="card-title mb-0">Mevcut Bilgiler</h5>
+            </div>
+            <div class="card-body">
+                <table class="table table-sm">
+                    <tbody>
+                        <tr>
+                            <th>Dosya Adı:</th>
+                            <td>{{ file.name }}</td>
+                        </tr>
+                        <tr>
+                            <th>Koleksiyon:</th>
+                            <td>{{ file.collection|default:"Ana Dizin" }}</td>
+                        </tr>
+                        <tr>
+                            <th>Boyut:</th>
+                            <td>{{ file.size_formatted }}</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %} 
