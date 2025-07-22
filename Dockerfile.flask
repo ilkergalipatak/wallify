@@ -7,7 +7,7 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 # Uygulama dosyalarını kopyala
-COPY models.py auth.py config.py wallify_cdn.py ./
+COPY models.py auth.py config.py wallify_cdn.py cdn_service.py ./
 COPY cdn ./cdn
 
 # PostgreSQL'in başlamasını beklemek için wait-for-it script'ini ekle
