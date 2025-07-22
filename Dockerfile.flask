@@ -15,6 +15,9 @@ RUN apt-get update && apt-get install -y wget
 RUN wget -O /usr/local/bin/wait-for-it.sh https://raw.githubusercontent.com/vishnubob/wait-for-it/master/wait-for-it.sh
 RUN chmod +x /usr/local/bin/wait-for-it.sh
 
+# Docker ortamında olduğumuzu belirt
+ENV DOCKER_ENVIRONMENT=true
+
 # Port aç
 EXPOSE 9545
 

@@ -18,7 +18,7 @@ services:
       timeout: 5s
       retries: 5
     env_file:
-      - .env
+      - .env.docker
 
   # Flask API (CDN)
   flask:
@@ -28,8 +28,11 @@ services:
     depends_on:
       db:
         condition: service_healthy
+    environment:
+      - DB_HOST=db
+      - DOCKER_ENVIRONMENT=true
     env_file:
-      - .env
+      - .env.docker
     volumes:
       - ./cdn:/app/cdn
     ports:
@@ -47,13 +50,15 @@ services:
     depends_on:
       - flask
     env_file:
-      - .env
+      - .env.docker
     environment:
       - CDN_API_URL=http://flask:7545
       # Bu değişken Docker içinde kullanılacak
       - DOCKER_CDN_API_URL=http://flask:7545
       # Bu değişken tarayıcıda kullanılacak
       - BROWSER_CDN_API_URL=http://localhost:7545
+      - DB_HOST=db
+      - DOCKER_ENVIRONMENT=true
     volumes:
       - ./cdn:/app/cdn
       - ./wallify_admin:/app/wallify_admin
