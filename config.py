@@ -17,7 +17,7 @@ JWT_ALGORITHM = os.getenv("JWT_ALGORITHM", "HS256")
 JWT_EXPIRATION_DAYS = int(os.getenv("JWT_EXPIRATION_DAYS", 365))
 
 # Uygulama ayarları
-PORT = int(os.getenv("PORT", 9545))
+PORT = int(os.getenv("PORT", 7545))
 DEBUG = os.getenv("DEBUG", "True").lower() == "true"
 
 # CDN ayarları

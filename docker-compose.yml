@@ -33,7 +33,7 @@ services:
     volumes:
       - ./cdn:/app/cdn
     ports:
-      - "9545:9545"
+      - "7545:7545"
     command: >
       sh -c "wait-for-it.sh db:5432 -t 60 --
              python wallify_cdn.py"
@@ -49,18 +49,18 @@ services:
     env_file:
       - .env
     environment:
-      - CDN_API_URL=http://flask:9545
+      - CDN_API_URL=http://flask:7545
       # Bu değişken Docker içinde kullanılacak
-      - DOCKER_CDN_API_URL=http://flask:9545
+      - DOCKER_CDN_API_URL=http://flask:7545
       # Bu değişken tarayıcıda kullanılacak
-      - BROWSER_CDN_API_URL=http://localhost:9545
+      - BROWSER_CDN_API_URL=http://localhost:7545
     volumes:
       - ./cdn:/app/cdn
       - ./wallify_admin:/app/wallify_admin
     ports:
       - "8000:8000"
     command: >
-      sh -c "wait-for-it.sh flask:9545 -t 60 --
+      sh -c "wait-for-it.sh flask:7545 -t 60 --
              cd /app/wallify_admin &&
              python manage.py runserver 0.0.0.0:8000"
     restart: unless-stopped
