@@ -102,76 +102,48 @@ def api_login_required(view_func):
         return view_func(request, *args, **kwargs)
     return wrapper
 
-# Django login_required yerine api_login_required kullan
 @api_login_required
 def home(request):
-    """Ana sayfa görünümü"""
-    # API'den koleksiyonları al
-    collections_data = get_collections_from_api(request.session.get('api_token'))
-    
-    # API'den tüm dosyaları tek seferde al
-    all_files_data = get_files_from_api(token=request.session.get('api_token'), page=1, per_page=100)
-    all_files = all_files_data.get('files', [])
-    
-    # Dosya URL'lerine token ekle
-    token = request.session.get('api_token')
-    all_files_with_token = []
-    for file_info in all_files:
-        # Docker içindeki URL'yi tarayıcıda çalışacak şekilde dönüştür
-        file_url = file_info.get('url', '')
-        browser_url = convert_docker_url_to_browser_url(file_url)
-        all_files_with_token.append(f"{browser_url}?token={token}")
-    
-    # Son 5 dosyayı al
-    recent_files = all_files_with_token[:5]
-    
-    # Koleksiyonları dictionary formatına dönüştür
-    collections = []
-    for collection in collections_data[:8]:  # İlk 8 koleksiyon
-        # Koleksiyona ait dosya sayısını hesapla
-        collection_name = collection.get('name', '')
-        collection_files = [f for f in all_files if f.get('collection_name') == collection_name]
-        file_count = len(collection_files)
-        
-        collections.append({
-            'name': collection_name,
-            'file_count': file_count
-        })
-    
-    # Toplam sayıları hesapla
-    collection_count = len(collections_data)
-    file_count = len(all_files)
-    
-    # Toplam boyut bilgisini dosya sisteminden al
-    # Bu işlem yavaş olabilir, ama sadece ana sayfada bir kez yapılacak
+    """Ana sayfa görünümü (istatistikler Flask API'den alınır)"""
+    api_token = request.session.get('api_token')
+    api_url = f"{settings.CDN_API_URL}/admin/stats"
     try:
-        # CDN klasöründen dosya sayısı ve toplam boyutu hesapla
-        cdn_data = scan_cdn_folder()
-        
-        # Toplam boyutu hesapla
-        total_size_bytes = sum(file_info.get('size', 0) for file_info in cdn_data.get('files', []))
-        
-        # Okunaklı formata dönüştür
-        size = total_size_bytes
-        for unit in ['B', 'KB', 'MB', 'GB']:
-            if size < 1024 or unit == 'GB':
-                total_size = f"{size:.2f} {unit}"
-                break
-            size /= 1024
+        response = requests.get(api_url, headers={'Authorization': api_token})
+        stats = response.json() if response.status_code == 200 else {}
     except Exception as e:
-        logger.error(f"Toplam boyut hesaplanamadı: {str(e)}")
-        total_size = "N/A"
-    
+        stats = {}
+        logger.error(f"API stats çekilemedi: {str(e)}")
+
+    # Okunaklı boyut formatı
+    total_size = stats.get('total_size', 0)
+    try:
+        size = float(total_size)
+    except (ValueError, TypeError):
+        size = 0
+    for unit in ['B', 'KB', 'MB', 'GB']:
+        if size < 1024 or unit == 'GB':
+            total_size_str = f"{size:.2f} {unit}"
+            break
+        size /= 1024
+
+    # recent_files url'lerine token ekle
+    recent_files = stats.get('recent_files', [])
+    token = request.session.get('api_token')
+    for file in recent_files:
+        if 'url' in file and token:
+            if '?' in file['url']:
+                file['url'] += f"&token={token}"
+            else:
+                file['url'] += f"?token={token}"
+
     context = {
-        'collections': collections,
+        'collection_count': stats.get('collection_count', 0),
+        'file_count': stats.get('total_files', 0),
+        'total_size': total_size_str,
         'recent_files': recent_files,
-        'collection_count': collection_count,
-        'file_count': file_count,
-        'total_size': total_size,
-        'last_upload_date': None,  # API'den alamadığımız için None
+        'collections': stats.get('top_collections', []),
         'username': request.session.get('username'),
     }
-    
     return render(request, 'dashboard/home.html', context)
 
 @api_login_required
