@@ -85,7 +85,7 @@ class CDNService:
                 total = session.query(File).count()
                 files = session.query(File).order_by(File.created_at.desc()).offset((page - 1) * per_page).limit(per_page).all()
                 
-                base_url = request.host_url.rstrip("/")
+                base_url = config.CDN_PUBLIC_URL.rstrip("/")
                 file_list = []
                 
                 for file in files:
@@ -137,7 +137,7 @@ class CDNService:
                 total = session.query(File).filter(File.collection_id == collection.id).count()
                 files = session.query(File).filter(File.collection_id == collection.id).order_by(File.created_at.desc()).offset((page - 1) * per_page).limit(per_page).all()
                 
-                base_url = request.host_url.rstrip("/")
+                base_url = config.CDN_PUBLIC_URL.rstrip("/")
                 file_list = []
                 
                 for file in files:
@@ -282,7 +282,7 @@ class CDNService:
                 # Dosya bilgilerini döndür
                 file_info = db_file.to_dict()
                 file_info["success"] = True
-                file_info["url"] = f"{request.host_url.rstrip('/')}/cdn/{rel_path}"
+                file_info["url"] = f"{config.CDN_PUBLIC_URL.rstrip('/')}/cdn/{rel_path}"
                 
                 return jsonify(file_info), 201
             except Exception as e:
@@ -389,7 +389,7 @@ class CDNService:
                         # Dosya bilgilerini ekle
                         file_info = db_file.to_dict()
                         file_info["success"] = True
-                        file_info["url"] = f"{request.host_url.rstrip('/')}/cdn/{rel_path}"
+                        file_info["url"] = f"{config.CDN_PUBLIC_URL.rstrip('/')}/cdn/{rel_path}"
                         results.append(file_info)
                     except Exception as e:
                         results.append({
@@ -749,7 +749,7 @@ class CDNService:
                 # Son eklenen dosyalar
                 recent_files = session.query(File).order_by(File.created_at.desc()).limit(5).all()
                 recent_files_list = []
-                base_url = request.host_url.rstrip("/")
+                base_url = config.CDN_PUBLIC_URL.rstrip("/")
                 
                 for file in recent_files:
                     file_dict = file.to_dict()
