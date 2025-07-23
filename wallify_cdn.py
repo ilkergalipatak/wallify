@@ -80,6 +80,10 @@ def delete_collection_endpoint():
 def update_collection_endpoint():
     return cdn_service.update_collection()
 
+@app.route("/create_collection", methods=["POST"])
+def create_collection_endpoint():
+    return cdn_service.create_collection()
+
 @app.route("/admin/stats", methods=["GET"])
 def get_admin_stats():
     return cdn_service.get_admin_stats()

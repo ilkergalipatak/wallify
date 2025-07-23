@@ -26,7 +26,17 @@ SECRET_KEY = os.environ.get('DJANGO_SECRET_KEY', 'django-insecure-q!z9$xw$k#p5r0
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = os.environ.get('DJANGO_DEBUG', 'True').lower() == 'true'
 
-ALLOWED_HOSTS = os.environ.get('DJANGO_ALLOWED_HOSTS', 'localhost,127.0.0.1').split(',')
+# Güncellenen ALLOWED_HOSTS ayarı
+ALLOWED_HOSTS = os.environ.get('DJANGO_ALLOWED_HOSTS', 'localhost,127.0.0.1,admin.craftergarage.com,cdn.craftergarage.com').split(',')
+
+# CSRF güvenilir kaynaklar
+CSRF_TRUSTED_ORIGINS = [
+    'https://admin.craftergarage.com',
+    'https://cdn.craftergarage.com',
+    'http://admin.craftergarage.com',
+    'http://cdn.craftergarage.com',
+    'http://localhost:8000',
+]
 
 
 # Application definition
@@ -147,10 +157,10 @@ CDN_FOLDER = os.path.join(BASE_DIR.parent, 'cdn')
 
 # CDN API URL
 # Docker içinde kullanılacak URL
-CDN_API_URL = os.environ.get('CDN_API_URL', 'http://localhost:9545')
+CDN_API_URL = os.environ.get('CDN_API_URL', 'http://localhost:7545')
 
 # Tarayıcıda kullanılacak URL
-BROWSER_CDN_API_URL = os.environ.get('BROWSER_CDN_API_URL', 'http://localhost:9545')
+BROWSER_CDN_API_URL = os.environ.get('BROWSER_CDN_API_URL', 'http://localhost:7545')
 
 # Docker içinde kullanılacak URL
-DOCKER_CDN_API_URL = os.environ.get('DOCKER_CDN_API_URL', 'http://flask:9545')
+DOCKER_CDN_API_URL = os.environ.get('DOCKER_CDN_API_URL', 'http://flask:7545')

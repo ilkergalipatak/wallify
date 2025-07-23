@@ -19,6 +19,8 @@ services:
       retries: 5
     env_file:
       - .env.docker
+    networks:
+      - app_network  # Özel ağına bağlanıyor
 
   # Flask API (CDN)
   flask:
@@ -41,6 +43,8 @@ services:
       sh -c "wait-for-it.sh db:5432 -t 60 --
              python wallify_cdn.py"
     restart: unless-stopped
+    networks:
+      - app_network  # Özel ağına bağlanıyor
 
   # Django Admin Panel
   django:
@@ -53,12 +57,11 @@ services:
       - .env.docker
     environment:
       - CDN_API_URL=http://flask:7545
-      # Bu değişken Docker içinde kullanılacak
       - DOCKER_CDN_API_URL=http://flask:7545
-      # Bu değişken tarayıcıda kullanılacak
-      - BROWSER_CDN_API_URL=http://localhost:7545
+      - BROWSER_CDN_API_URL=http://cdn.craftergarage.com
       - DB_HOST=db
       - DOCKER_ENVIRONMENT=true
+      - DJANGO_ALLOWED_HOSTS=localhost,127.0.0.1,django,flask,admin.craftergarage.com,cdn.craftergarage.com
     volumes:
       - ./cdn:/app/cdn
       - ./wallify_admin:/app/wallify_admin
@@ -69,6 +72,12 @@ services:
              cd /app/wallify_admin &&
              python manage.py runserver 0.0.0.0:8000"
     restart: unless-stopped
+    networks:
+      - app_network  # Özel ağına bağlanıyor
 
 volumes:
-  postgres_data: 
+  postgres_data:
+
+networks:
+  app_network:  # Özel ağ tanımlandı
+    driver: bridge  # Bridge ağı kullanılıyor

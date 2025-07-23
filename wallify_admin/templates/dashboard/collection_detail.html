@@ -97,25 +97,23 @@
                 <div class="col-md-3 mb-4 file-item">
                     <div class="card h-100">
                         <div class="card-img-top text-center p-2" style="height: 150px; display: flex; align-items: center; justify-content: center;">
-                            {% if file %}
-                                {% with filename=file|default:''|last_part:'/' %}
-                                <img src="{{ file|safe }}&width=150" class="img-fluid" style="max-height: 140px;" alt="{{ filename }}">
-                                {% endwith %}
+                            {% if file.url %}
+                                <img src="{{ file.url|safe }}&width=150" class="img-fluid" style="max-height: 140px;" alt="{{ file.name }}">
                             {% else %}
                                 <i class="fas fa-file fa-5x text-muted"></i>
                             {% endif %}
                         </div>
                         <div class="card-body">
-                            <h6 class="card-title text-truncate" title="{{ file }}">{{ file|default:''|last_part:'/' }}</h6>
-                            <p class="card-text small text-muted">{{ file.size_formatted }}</p>
+                            <h6 class="card-title text-truncate" title="{{ file.name }}">{{ file.name }}</h6>
+                            <p class="card-text small text-muted">{{ file.size }}</p>
                         </div>
                         <div class="card-footer bg-transparent">
                             <div class="d-flex justify-content-between">
-                                <a href="{{ file|safe }}" target="_blank" class="btn btn-sm btn-outline-primary">
+                                <a href="{{ file.url|safe }}" target="_blank" class="btn btn-sm btn-outline-primary">
                                     <i class="fas fa-eye"></i>
                                 </a>
                                 <div>
-                                    <button class="btn btn-sm btn-outline-danger delete-file-btn" data-file-url="{{ file|safe }}">
+                                    <button class="btn btn-sm btn-outline-danger delete-file-btn" data-file-url="{{ file.url|safe }}">
                                         <i class="fas fa-trash"></i>
                                     </button>
                                 </div>

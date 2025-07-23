@@ -89,7 +89,7 @@
                         </div>
                         <div class="card-body">
                             <h6 class="card-title text-truncate" title="{{ file.name }}">{{ file.name }}</h6>
-                            <p class="card-text small text-muted">{{ file.size_formatted }}</p>
+                            <p class="card-text small text-muted">{{ file.size }}</p>
                             <p class="card-text small text-muted">
                                 {% if file.collection %}
                                     <i class="fas fa-folder me-1"></i> {{ file.collection }}
@@ -147,7 +147,7 @@
                                     Ana Dizin
                                 {% endif %}
                             </td>
-                            <td>{{ file.size_formatted }}</td>
+                            <td>{{ file.size }}</td>
                             <td>
                                 <button class="btn btn-sm btn-outline-danger delete-file" data-path="{{ file.path }}" data-name="{{ file.name }}">
                                     <i class="fas fa-trash"></i>

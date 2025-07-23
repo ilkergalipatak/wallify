@@ -123,23 +123,21 @@
             </div>
             <div class="card-body p-0">
                 <div class="list-group list-group-flush">
-                    {% for file in recent_files %}
-                        {% with filename=file|last_part:'/' %}
+                    {% for file_url in recent_files %}
                         <div class="list-group-item">
                             <div class="d-flex align-items-center">
                                 <div class="me-3" style="width: 50px; height: 50px;">
-                                    <img src="{{ file|safe }}&width=100" class="img-fluid" alt="{{ filename }}" style="max-height: 50px; max-width: 50px; object-fit: cover;">
+                                    <img src="{{ file_url|safe }}&width=100" class="img-fluid" alt="Dosya" style="max-height: 50px; max-width: 50px; object-fit: cover;">
                                 </div>
                                 <div class="flex-grow-1">
-                                    <h6 class="mb-0 text-truncate" style="max-width: 200px;">{{ filename }}</h6>
-                                    <small class="text-muted">{{ file.size_formatted }}</small>
+                                    <h6 class="mb-0 text-truncate" style="max-width: 200px;">{{ file_url|last_part:'/' }}</h6>
+                                    <small class="text-muted">-</small>
                                 </div>
-                                <a href="{{ file|safe }}" target="_blank" class="btn btn-sm btn-outline-secondary">
+                                <a href="{{ file_url|safe }}" target="_blank" class="btn btn-sm btn-outline-secondary">
                                     <i class="fas fa-eye"></i>
                                 </a>
                             </div>
                         </div>
-                        {% endwith %}
                     {% empty %}
                         <div class="list-group-item text-center py-4">
                             <i class="fas fa-file fa-3x text-muted mb-3"></i>

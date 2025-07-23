@@ -51,12 +51,16 @@ def get_auth_header(token):
 def convert_docker_url_to_browser_url(url):
     """Docker içindeki URL'yi tarayıcıda çalışacak şekilde dönüştürür"""
     # Docker ve tarayıcı için CDN API URL'lerini al
-    docker_cdn_api_url = os.environ.get('DOCKER_CDN_API_URL', 'http://flask:9545')
-    browser_cdn_api_url = os.environ.get('BROWSER_CDN_API_URL', 'http://localhost:9545')
+    docker_cdn_api_url = os.environ.get('DOCKER_CDN_API_URL', 'http://flask:7545')
+    browser_cdn_api_url = os.environ.get('BROWSER_CDN_API_URL', 'http://localhost:7545')
     
     # Docker URL'sini tarayıcı URL'sine dönüştür
     if docker_cdn_api_url in url:
         url = url.replace(docker_cdn_api_url, browser_cdn_api_url)
+    
+    # Domain adlarını da kontrol et ve değiştir
+    if 'flask:7545' in url:
+        url = url.replace('flask:7545', 'cdn.craftergarage.com')
     
     return url
 
@@ -131,6 +135,30 @@ def create_collection(name):
     except Exception as e:
         logger.error(f"Koleksiyon oluşturulamadı: {str(e)}")
         return False
+
+def api_create_collection(name, token=None):
+    """API ile yeni bir koleksiyon oluşturur"""
+    if not token:
+        logger.error("API token bulunamadı")
+        return {"success": False, "error": "API token bulunamadı"}
+    
+    try:
+        response = requests.post(
+            f"{settings.CDN_API_URL}/create_collection",
+            json={"name": name},
+            params={"token": token}
+        )
+        
+        if response.status_code == 200:
+            # Önbelleği temizle
+            clear_cache()
+            return response.json()
+        else:
+            logger.error(f"Koleksiyon oluşturulamadı: {response.text}")
+            return {"success": False, "error": response.text}
+    except Exception as e:
+        logger.error(f"Koleksiyon oluşturulamadı: {str(e)}")
+        return {"success": False, "error": str(e)}
 
 def delete_collection(name):
     """CDN klasöründen bir koleksiyonu (klasörü) siler"""

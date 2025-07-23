@@ -19,7 +19,7 @@ RUN chmod +x /usr/local/bin/wait-for-it.sh
 ENV DOCKER_ENVIRONMENT=true
 
 # Port aç
-EXPOSE 9545
+EXPOSE 7545
 
 # Uygulama başlatma komutu
 CMD ["python", "wallify_cdn.py"] 

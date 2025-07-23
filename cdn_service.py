@@ -1,10 +1,16 @@
 import os
-from flask import send_file, request, abort, jsonify
+import json
+import jwt
+import uuid
+import time
+from datetime import datetime
+from flask import request, jsonify, send_from_directory, abort
+from werkzeug.utils import secure_filename
 from PIL import Image
 from io import BytesIO
-import jwt
 from natsort import natsorted
 import mimetypes
+
 import config
 from models import File, Collection
 
@@ -643,6 +649,66 @@ class CDNService:
             abort(403, description="Forbidden: Invalid token")
         except Exception as e:
             return jsonify({"success": False, "message": str(e)}), 500
+    
+    def create_collection(self):
+        """Yeni bir koleksiyon oluşturur"""
+        token = request.args.get("token")
+        if not token:
+            token = request.headers.get("Authorization")
+            if not token:
+                abort(403, description="Forbidden: Missing token")
+        
+        try:
+            decoded_token = jwt.decode(token, config.JWT_SECRET, algorithms=[config.JWT_ALGORITHM])
+            user_id = decoded_token.get("user_id")
+            if not user_id:
+                abort(403, description="Forbidden: Invalid token payload")
+            
+            # Admin kontrolü
+            self.auth_service.verify_admin(user_id)
+            
+            data = request.json
+            name = data.get("name")
+            
+            if not name:
+                return jsonify({"success": False, "message": "Missing collection name"}), 400
+
+            # Veritabanı işlemleri
+            session = self.Session()
+            try:
+                # Veritabanında aynı isimde koleksiyon var mı?
+                existing = session.query(Collection).filter_by(name=name).first()
+                if existing:
+                    return jsonify({"success": False, "message": "Collection already exists in database"}), 409
+
+                # Dosya sistemi kontrolü
+                collection_path = os.path.join(self.cdn_folder, name)
+                if os.path.exists(collection_path):
+                    return jsonify({"success": False, "message": "Collection folder already exists"}), 409
+
+                # Klasörü oluştur
+                os.makedirs(collection_path, exist_ok=True)
+
+                # Koleksiyonu veritabanına ekle
+                collection = Collection(name=name)
+                session.add(collection)
+                session.commit()
+
+                return jsonify({"success": True, "message": "Collection created successfully", "name": name}), 201
+
+            except Exception as e:
+                session.rollback()
+                return jsonify({"success": False, "message": str(e)}), 500
+            finally:
+                session.close()
+
+        except jwt.ExpiredSignatureError:
+            abort(403, description="Forbidden: Token has expired")
+        except jwt.InvalidTokenError:
+            abort(403, description="Forbidden: Invalid token")
+        except Exception as e:
+            return jsonify({"success": False, "message": str(e)}), 500
+
     
     def get_admin_stats(self):
         """Admin paneli için istatistikler (sadece admin kullanıcılar)"""

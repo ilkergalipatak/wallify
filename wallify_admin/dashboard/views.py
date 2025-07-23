@@ -22,7 +22,7 @@ from .utils import (
     upload_file, delete_file, rename_file, move_file,
     scan_cdn_folder, get_file_info,
     api_upload_file, api_bulk_upload, api_delete_file, api_delete_collection, api_update_collection,
-    convert_docker_url_to_browser_url
+    convert_docker_url_to_browser_url, api_create_collection, clear_cache
 )
 
 # Logger tanımla
@@ -32,16 +32,20 @@ logger = logging.getLogger(__name__)
 def api_login(username, password):
     """CDN API'ye login isteği gönderir"""
     try:
+        api_url = f"{settings.CDN_API_URL}/auth"
+        logger.info(f"API login isteği gönderiliyor: {api_url}")
         response = requests.post(
-            f"{settings.CDN_API_URL}/auth",
-            json={"username": username, "password": password}
+            api_url,
+            json={"login": username, "password": password}
         )
         if response.status_code == 200:
+            logger.info("API login başarılı")
             return response.json()
         else:
+            logger.error(f"API login hatası: HTTP {response.status_code}, Yanıt: {response.text}")
             return None
     except Exception as e:
-        print(f"API login hatası: {str(e)}")
+        logger.error(f"API login hatası: {str(e)}")
         return None
 
 @csrf_exempt
@@ -112,9 +116,10 @@ def home(request):
     # Dosya URL'lerine token ekle
     token = request.session.get('api_token')
     all_files_with_token = []
-    for url in all_files:
+    for file_info in all_files:
         # Docker içindeki URL'yi tarayıcıda çalışacak şekilde dönüştür
-        browser_url = convert_docker_url_to_browser_url(url)
+        file_url = file_info.get('url', '')
+        browser_url = convert_docker_url_to_browser_url(file_url)
         all_files_with_token.append(f"{browser_url}?token={token}")
     
     # Son 5 dosyayı al
@@ -122,9 +127,10 @@ def home(request):
     
     # Koleksiyonları dictionary formatına dönüştür
     collections = []
-    for i, collection_name in enumerate(collections_data[:8]):  # İlk 8 koleksiyon
+    for collection in collections_data[:8]:  # İlk 8 koleksiyon
         # Koleksiyona ait dosya sayısını hesapla
-        collection_files = [f for f in all_files if f.split('/')[-2] == collection_name]
+        collection_name = collection.get('name', '')
+        collection_files = [f for f in all_files if f.get('collection_name') == collection_name]
         file_count = len(collection_files)
         
         collections.append({
@@ -180,15 +186,26 @@ def collection_list(request):
     
     # Her koleksiyon için dosya sayısını hesapla
     collections = []
-    for collection_name in collections_data:
+    for collection in collections_data:
         # Koleksiyona ait dosya sayısını hesapla
-        collection_files = [f for f in all_files if f.split('/')[-2] == collection_name]
-        file_count = len(collection_files)
+        collection_name = collection.get('name', '')
+        collection_id = collection.get('id', '')
+        file_count = collection.get('file_count', 0)
+        total_size = collection.get('total_file_size', 0)
+        
+        # Okunaklı formata dönüştür
+        size = total_size
+        for unit in ['B', 'KB', 'MB', 'GB']:
+            if size < 1024 or unit == 'GB':
+                readable_size = f"{size:.2f} {unit}"
+                break
+            size /= 1024
         
         collections.append({
             'name': collection_name,
+            'id': collection_id,
             'file_count': file_count,
-            'total_size': 'N/A'  # API'den boyut bilgisi alamıyoruz
+            'total_size': readable_size
         })
     
     context = {
@@ -206,14 +223,21 @@ def collection_create(request):
         if form.is_valid():
             collection_name = form.cleaned_data['name']
             
-            # CDN klasöründe koleksiyonu oluştur
-            success = create_collection(collection_name)
+            # Önce CDN klasöründe koleksiyonu oluştur
+            local_success = create_collection(collection_name)
             
-            if success:
+            # Sonra API'ye koleksiyon oluşturma isteği gönder
+            api_result = api_create_collection(collection_name, request.session.get('api_token'))
+            print(f"API yanıtı: {api_result}")
+            
+            if local_success and api_result.get('success', False):
                 messages.success(request, f"'{collection_name}' koleksiyonu başarıyla oluşturuldu.")
+                # Önbelleği temizle
+                clear_cache()
                 return redirect('dashboard:collection_list')
             else:
-                messages.error(request, "Koleksiyon oluşturulurken bir hata oluştu.")
+                error_msg = api_result.get('error', 'Bilinmeyen hata')
+                messages.error(request, f"Koleksiyon oluşturulurken bir hata oluştu: {error_msg}")
     else:
         form = CollectionForm()
     
@@ -314,14 +338,31 @@ def collection_delete(request, pk):
 def collection_detail(request, pk):
     """Koleksiyon detay görünümü"""
     # Koleksiyonlar artık API'den geliyor, bu yüzden pk parametresi yerine
-    # koleksiyon adını kullanacağız
+    # koleksiyon id'sini veya adını kullanacağız
     
     # Tüm koleksiyonları al
     collections_data = get_collections_from_api(request.session.get('api_token'))
     
     # pk indeksine göre koleksiyon adını bul
+    collection_found = False
+    collection_name = ""
+    collection_id = ""
+    
     try:
-        collection_name = collections_data[int(pk) - 1]  # pk 1'den başlıyor varsayalım
+        # Önce id'ye göre ara
+        for collection in collections_data:
+            if collection.get('id') == pk:
+                collection_name = collection.get('name')
+                collection_id = collection.get('id')
+                collection_found = True
+                break
+        
+        # Bulunamadıysa indekse göre ara
+        if not collection_found:
+            collection = collections_data[int(pk) - 1]  # pk 1'den başlıyor varsayalım
+            collection_name = collection.get('name')
+            collection_id = collection.get('id')
+            collection_found = True
     except (IndexError, ValueError):
         messages.error(request, "Koleksiyon bulunamadı.")
         return redirect('dashboard:collection_list')
@@ -333,10 +374,16 @@ def collection_detail(request, pk):
     # Dosya URL'lerine token ekle
     token = request.session.get('api_token')
     files_with_token = []
-    for url in files:
+    for file_info in files:
         # Docker içindeki URL'yi tarayıcıda çalışacak şekilde dönüştür
-        browser_url = convert_docker_url_to_browser_url(url)
-        files_with_token.append(f"{browser_url}?token={token}")
+        file_url = file_info.get('url', '')
+        browser_url = convert_docker_url_to_browser_url(file_url)
+        files_with_token.append({
+            'url': f"{browser_url}?token={token}",
+            'name': file_info.get('file_name', ''),
+            'size': file_info.get('file_size', 0),
+            'id': file_info.get('id', '')
+        })
     
     # Sayfalama
     paginator = Paginator(files_with_token, 20)  # Her sayfada 20 dosya
@@ -344,7 +391,7 @@ def collection_detail(request, pk):
     page_obj = paginator.get_page(page_number)
     
     context = {
-        'collection': {'name': collection_name},
+        'collection': {'name': collection_name, 'id': collection_id},
         'files': page_obj,
         'pk': pk,  # pk değişkenini context'e ekle
         'username': request.session.get('username'),
@@ -367,61 +414,56 @@ def file_list(request):
     token = request.session.get('api_token')
     processed_files = []
     
-    for i, file_url in enumerate(files):
+    for file_info in files:
         # Docker içindeki URL'yi tarayıcıda çalışacak şekilde dönüştür
+        file_url = file_info.get('url', '')
         browser_url = convert_docker_url_to_browser_url(file_url)
         
-        # URL'den dosya adını çıkar
-        file_name = os.path.basename(file_url)
+        # Dosya adını ve koleksiyon adını al
+        file_name = file_info.get('file_name', '')
+        collection_name = file_info.get('collection_name', '')
+        file_size = file_info.get('file_size', 0)
+        file_id = file_info.get('id', '')
         
         # Dosya uzantısından türünü belirle
         _, ext = os.path.splitext(file_name)
         is_image = ext.lower() in ['.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp']
         
-        # Koleksiyon adını URL'den çıkar
-        parts = file_url.split('/')
-        collection = parts[-2] if len(parts) > 1 and parts[-2] != 'cdn' else None
+        # Arama filtresi varsa ve dosya adında geçmiyorsa atla
+        if search_query and search_query.lower() not in file_name.lower():
+            continue
         
-        # Dosya nesnesini oluştur
-        file_obj = {
-            'id': i + 1,  # 1'den başlayan indeks
+        # Okunaklı boyut formatı
+        size = file_size
+        readable_size = "0 B"
+        for unit in ['B', 'KB', 'MB', 'GB']:
+            if size < 1024 or unit == 'GB':
+                readable_size = f"{size:.2f} {unit}"
+                break
+            size /= 1024
+        
+        processed_files.append({
+            'id': file_id,
             'name': file_name,
-            'path': file_url,
+            'collection': collection_name,
+            'size': readable_size,
             'url': f"{browser_url}?token={token}",
-            'collection': collection,
-            'size_formatted': "N/A",  # API'den boyut bilgisi alamıyoruz
-            'is_image': is_image,
-            'created_at': None  # API'den tarih bilgisi alamıyoruz
-        }
-        
-        processed_files.append(file_obj)
-    
-    # Arama filtrelemesi
-    if search_query:
-        processed_files = [f for f in processed_files if search_query.lower() in f.get('name', '').lower()]
-    
-    # Sıralama
-    sort_by = request.GET.get('sort', 'name')
-    if sort_by == 'name':
-        processed_files = sorted(processed_files, key=lambda x: x.get('name', ''))
-    elif sort_by == '-name':
-        processed_files = sorted(processed_files, key=lambda x: x.get('name', ''), reverse=True)
+            'is_image': is_image
+        })
     
     # Sayfalama
-    paginator = Paginator(processed_files, 24)  # Her sayfada 24 dosya
+    paginator = Paginator(processed_files, 20)  # Her sayfada 20 dosya
     page_number = request.GET.get('page')
     page_obj = paginator.get_page(page_number)
     
-    # Koleksiyon listesi (filtreleme için)
+    # Koleksiyon listesini API'den al
     collections = get_collections_from_api(request.session.get('api_token'))
-    collections_with_names = [{'name': c} for c in collections]
     
     context = {
         'files': page_obj,
-        'collections': collections_with_names,
-        'collection_filter': collection_filter,
+        'collections': collections,
+        'current_collection': collection_filter,
         'search_query': search_query,
-        'sort_by': sort_by,
         'username': request.session.get('username'),
     }
     
