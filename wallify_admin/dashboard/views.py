@@ -217,26 +217,22 @@ def collection_list(request):
 
 @api_login_required
 def collection_create(request):
-    """Koleksiyon oluşturma görünümü"""
+    """Koleksiyon oluşturma görünümü (sadece API üzerinden)"""
     if request.method == 'POST':
         form = CollectionForm(request.POST)
         if form.is_valid():
             collection_name = form.cleaned_data['name']
             
-            # Önce CDN klasöründe koleksiyonu oluştur
-            local_success = create_collection(collection_name)
-            
-            # Sonra API'ye koleksiyon oluşturma isteği gönder
+            # Sadece API'ye koleksiyon oluşturma isteği gönder
             api_result = api_create_collection(collection_name, request.session.get('api_token'))
             print(f"API yanıtı: {api_result}")
             
-            if local_success and api_result.get('success', False):
+            if api_result.get('success', False):
                 messages.success(request, f"'{collection_name}' koleksiyonu başarıyla oluşturuldu.")
-                # Önbelleği temizle
                 clear_cache()
                 return redirect('dashboard:collection_list')
             else:
-                error_msg = api_result.get('error', 'Bilinmeyen hata')
+                error_msg = api_result.get('message', api_result.get('error', 'Bilinmeyen hata'))
                 messages.error(request, f"Koleksiyon oluşturulurken bir hata oluştu: {error_msg}")
     else:
         form = CollectionForm()
@@ -253,10 +249,7 @@ def collection_create(request):
 # ve context'e username ekle
 @api_login_required
 def collection_edit(request, pk):
-    """Koleksiyon düzenleme görünümü"""
-    # Koleksiyonlar artık API'den geliyor, bu yüzden pk parametresi yerine
-    # koleksiyon adını kullanacağız
-    
+    """Koleksiyon düzenleme görünümü (sadece isim güncellenebilir)"""
     # Tüm koleksiyonları al
     collections_data = get_collections_from_api(request.session.get('api_token'))
     
@@ -264,7 +257,8 @@ def collection_edit(request, pk):
     try:
         if not collections_data or pk <= 0 or pk > len(collections_data):
             raise IndexError("Invalid collection index")
-        collection_name = collections_data[int(pk) - 1]  # pk 1'den başlıyor varsayalım
+        collection = collections_data[int(pk) - 1]  # pk 1'den başlıyor varsayalım
+        collection_name = collection.get('name', '')
     except (IndexError, ValueError):
         messages.error(request, "Koleksiyon bulunamadı.")
         return redirect('dashboard:collection_list')
@@ -273,12 +267,9 @@ def collection_edit(request, pk):
         form = CollectionForm(request.POST)
         if form.is_valid():
             new_collection_name = form.cleaned_data['name']
-            
-            # Eğer isim değiştiyse, API ile koleksiyonu güncelle
+            # Sadece isim değişikliği API'ye gönderilecek
             if collection_name != new_collection_name:
-                # API ile koleksiyonu güncelle
                 result = api_update_collection(collection_name, new_collection_name, request.session.get('api_token'))
-                
                 if result.get('success', False):
                     messages.success(request, f"'{new_collection_name}' koleksiyonu başarıyla güncellendi.")
                     return redirect('dashboard:collection_list')
@@ -288,7 +279,7 @@ def collection_edit(request, pk):
                 messages.success(request, f"'{new_collection_name}' koleksiyonu başarıyla güncellendi.")
                 return redirect('dashboard:collection_list')
     else:
-        # Form için başlangıç değerlerini ayarla
+        # Form için sadece isim alanını göster
         form = CollectionForm(initial={'name': collection_name})
     
     context = {
@@ -482,7 +473,8 @@ def file_upload(request):
         
         # Koleksiyon listesini API'den al ve forma ekle
         collections = get_collections_from_api(request.session.get('api_token'))
-        form.fields['collection'].choices = [(None, 'Ana Dizin')] + [(c, c) for c in collections]
+        collection_names = [c['name'] for c in collections]
+        form.fields['collection'].choices = [(None, 'Ana Dizin')] + [(name, name) for name in collection_names]
         
         if form.is_valid():
             uploaded_file = request.FILES['file']
@@ -501,7 +493,7 @@ def file_upload(request):
                 if collection_name:
                     # Koleksiyon indeksini bul
                     try:
-                        collection_index = collections.index(collection_name) + 1
+                        collection_index = collection_names.index(collection_name) + 1
                         return redirect('dashboard:collection_detail', pk=collection_index)
                     except ValueError:
                         pass
@@ -517,7 +509,8 @@ def file_upload(request):
         
         # Koleksiyon listesini API'den al
         collections = get_collections_from_api(request.session.get('api_token'))
-        form.fields['collection'].choices = [(None, 'Ana Dizin')] + [(c, c) for c in collections]
+        collection_names = [c['name'] for c in collections]
+        form.fields['collection'].choices = [(None, 'Ana Dizin')] + [(name, name) for name in collection_names]
         
         # URL'den gelen koleksiyon parametresini ayarla
         if collection_param:
@@ -543,7 +536,8 @@ def bulk_upload(request):
         
         # Koleksiyon listesini API'den al ve forma ekle
         collections = get_collections_from_api(request.session.get('api_token'))
-        form.fields['collection'].choices = [(c, c) for c in collections]
+        collection_names = [c['name'] for c in collections]
+        form.fields['collection'].choices = [(name, name) for name in collection_names]
         
         if form.is_valid():
             collection_name = form.cleaned_data['collection']
@@ -574,7 +568,8 @@ def bulk_upload(request):
         form = BulkUploadForm()
         # Koleksiyon listesini API'den al
         collections = get_collections_from_api(request.session.get('api_token'))
-        form.fields['collection'].choices = [(c, c) for c in collections]
+        collection_names = [c['name'] for c in collections]
+        form.fields['collection'].choices = [(name, name) for name in collection_names]
     
     context = {
         'form': form,
@@ -713,23 +708,22 @@ def file_delete(request, pk):
 
 @api_login_required
 def sync_with_cdn(request):
-    """CDN ile senkronizasyon görünümü"""
+    """CDN ile senkronizasyon görünümü (Flask API'ye POST atar)"""
     if request.method == 'POST':
-        # CDN klasörünü tara
-        cdn_data = scan_cdn_folder()
-        
-        # API'den koleksiyonları al
-        api_collections = get_collections_from_api(request.session.get('api_token'))
-        
-        # Yeni koleksiyonları oluştur
-        for collection_name in cdn_data.get('collections', []):
-            if collection_name not in api_collections:
-                create_collection(collection_name)
-        
-        messages.success(request, "CDN ile senkronizasyon tamamlandı.")
-        return redirect('dashboard:home')
-    
-    return render(request, 'dashboard/sync_with_cdn.html')
+        api_token = request.session.get('api_token')
+        api_url = f"{settings.CDN_API_URL}/admin/sync_cdn_db"
+        try:
+            response = requests.post(api_url, headers={
+                'Authorization': api_token,
+                'Accept': 'application/json',
+            })
+            if response.status_code == 200:
+                return JsonResponse(response.json())
+            else:
+                return JsonResponse({'status': 'error', 'message': response.text}, status=response.status_code)
+        except Exception as e:
+            return JsonResponse({'status': 'error', 'message': str(e)}, status=500)
+    return JsonResponse({'status': 'error', 'message': 'Sadece POST istekleri desteklenir.'}, status=405)
 
 @api_login_required
 def api_collections(request):

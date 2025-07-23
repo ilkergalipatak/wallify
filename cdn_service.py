@@ -1,10 +1,11 @@
 import os
 import json
 import jwt
+from jwt.exceptions import ExpiredSignatureError, InvalidTokenError
 import uuid
 import time
 from datetime import datetime
-from flask import request, jsonify, send_from_directory, abort
+from flask import request, jsonify, send_from_directory, abort, send_file
 from werkzeug.utils import secure_filename
 from PIL import Image
 from io import BytesIO
@@ -52,9 +53,9 @@ class CDNService:
                 image_io.seek(0)
                 return send_file(image_io, mimetype=f"image/{image.format.lower()}")
             return send_file(file_path)
-        except jwt.ExpiredSignatureError:
+        except ExpiredSignatureError:
             abort(403, description="Forbidden: Token has expired")
-        except jwt.InvalidTokenError:
+        except InvalidTokenError:
             abort(403, description="Forbidden: Invalid token")
     
     def list_all(self):
@@ -100,9 +101,9 @@ class CDNService:
                 })
             finally:
                 session.close()
-        except jwt.ExpiredSignatureError:
+        except ExpiredSignatureError:
             abort(403, description="Forbidden: Token has expired")
-        except jwt.InvalidTokenError:
+        except InvalidTokenError:
             abort(403, description="Forbidden: Invalid token")
     
     def list_collection(self, collection_name):
@@ -153,9 +154,9 @@ class CDNService:
                 })
             finally:
                 session.close()
-        except jwt.ExpiredSignatureError:
+        except ExpiredSignatureError:
             abort(403, description="Forbidden: Token has expired")
-        except jwt.InvalidTokenError:
+        except InvalidTokenError:
             abort(403, description="Forbidden: Invalid token")
     
     def list_collections(self):
@@ -188,9 +189,9 @@ class CDNService:
                 })
             finally:
                 session.close()
-        except jwt.ExpiredSignatureError:
+        except ExpiredSignatureError:
             abort(403, description="Forbidden: Token has expired")
-        except jwt.InvalidTokenError:
+        except InvalidTokenError:
             abort(403, description="Forbidden: Invalid token")
     
     def file_upload(self):
@@ -290,9 +291,9 @@ class CDNService:
             finally:
                 session.close()
                 
-        except jwt.ExpiredSignatureError:
+        except ExpiredSignatureError:
             abort(403, description="Forbidden: Token has expired")
-        except jwt.InvalidTokenError:
+        except InvalidTokenError:
             abort(403, description="Forbidden: Invalid token")
         except Exception as e:
             return jsonify({"success": False, "message": str(e)}), 500
@@ -416,9 +417,9 @@ class CDNService:
             finally:
                 session.close()
                 
-        except jwt.ExpiredSignatureError:
+        except ExpiredSignatureError:
             abort(403, description="Forbidden: Token has expired")
-        except jwt.InvalidTokenError:
+        except InvalidTokenError:
             abort(403, description="Forbidden: Invalid token")
         except Exception as e:
             return jsonify({"success": False, "message": str(e)}), 500
@@ -491,9 +492,9 @@ class CDNService:
             finally:
                 session.close()
                 
-        except jwt.ExpiredSignatureError:
+        except ExpiredSignatureError:
             abort(403, description="Forbidden: Token has expired")
-        except jwt.InvalidTokenError:
+        except InvalidTokenError:
             abort(403, description="Forbidden: Invalid token")
         except Exception as e:
             return jsonify({"success": False, "message": str(e)}), 500
@@ -555,9 +556,9 @@ class CDNService:
             finally:
                 session.close()
                 
-        except jwt.ExpiredSignatureError:
+        except ExpiredSignatureError:
             abort(403, description="Forbidden: Token has expired")
-        except jwt.InvalidTokenError:
+        except InvalidTokenError:
             abort(403, description="Forbidden: Invalid token")
         except Exception as e:
             return jsonify({"success": False, "message": str(e)}), 500
@@ -643,9 +644,9 @@ class CDNService:
             finally:
                 session.close()
                 
-        except jwt.ExpiredSignatureError:
+        except ExpiredSignatureError:
             abort(403, description="Forbidden: Token has expired")
-        except jwt.InvalidTokenError:
+        except InvalidTokenError:
             abort(403, description="Forbidden: Invalid token")
         except Exception as e:
             return jsonify({"success": False, "message": str(e)}), 500
@@ -657,7 +658,6 @@ class CDNService:
             token = request.headers.get("Authorization")
             if not token:
                 abort(403, description="Forbidden: Missing token")
-        
         try:
             decoded_token = jwt.decode(token, config.JWT_SECRET, algorithms=[config.JWT_ALGORITHM])
             user_id = decoded_token.get("user_id")
@@ -673,26 +673,31 @@ class CDNService:
             if not name:
                 return jsonify({"success": False, "message": "Missing collection name"}), 400
 
-            # Veritabanı işlemleri
             session = self.Session()
             try:
                 # Veritabanında aynı isimde koleksiyon var mı?
                 existing = session.query(Collection).filter_by(name=name).first()
                 if existing:
                     return jsonify({"success": False, "message": "Collection already exists in database"}), 409
-
                 # Dosya sistemi kontrolü
                 collection_path = os.path.join(self.cdn_folder, name)
                 if os.path.exists(collection_path):
                     return jsonify({"success": False, "message": "Collection folder already exists"}), 409
 
-                # Klasörü oluştur
-                os.makedirs(collection_path, exist_ok=True)
-
-                # Koleksiyonu veritabanına ekle
+                # Önce veritabanına ekle
                 collection = Collection(name=name)
                 session.add(collection)
                 session.commit()
+                
+
+                # Sonra dosya sisteminde klasörü oluştur
+                try:
+                    os.makedirs(collection_path, exist_ok=False)
+                except Exception as e:
+                    # Dosya sistemi işlemi başarısız olursa veritabanı kaydını sil
+                    session.delete(collection)
+                    session.commit()
+                    return jsonify({"success": False, "message": f"Folder could not be created: {str(e)}"}), 500
 
                 return jsonify({"success": True, "message": "Collection created successfully", "name": name}), 201
 
@@ -702,9 +707,9 @@ class CDNService:
             finally:
                 session.close()
 
-        except jwt.ExpiredSignatureError:
+        except ExpiredSignatureError:
             abort(403, description="Forbidden: Token has expired")
-        except jwt.InvalidTokenError:
+        except InvalidTokenError:
             abort(403, description="Forbidden: Invalid token")
         except Exception as e:
             return jsonify({"success": False, "message": str(e)}), 500
@@ -765,9 +770,130 @@ class CDNService:
             finally:
                 session.close()
                 
-        except jwt.ExpiredSignatureError:
+        except ExpiredSignatureError:
             abort(403, description="Forbidden: Token has expired")
-        except jwt.InvalidTokenError:
+        except InvalidTokenError:
+            abort(403, description="Forbidden: Invalid token")
+        except Exception as e:
+            return jsonify({"success": False, "message": str(e)}), 500 
+
+    def sync_cdn_db(self):
+        """CDN klasörü ile veritabanı arasında senkronizasyon (sadece admin kullanıcılar)"""
+        token = request.args.get("token")
+        if not token:
+            token = request.headers.get("Authorization")
+            if not token:
+                abort(403, description="Forbidden: Missing token")
+        try:
+            decoded_token = jwt.decode(token, config.JWT_SECRET, algorithms=[config.JWT_ALGORITHM])
+            user_id = decoded_token.get("user_id")
+            if not user_id:
+                abort(403, description="Forbidden: Invalid token payload")
+            self.auth_service.verify_admin(user_id)
+
+            session = self.Session()
+            try:
+                import mimetypes
+                import shutil
+                from models import File, Collection
+                import os
+                from natsort import natsorted
+                
+                # 1. Dosya sisteminden koleksiyon ve dosyaları tara
+                cdn_root = self.cdn_folder
+                fs_collections = set()
+                fs_files = dict()  # {collection_name: set(file_name)}
+                for entry in os.scandir(cdn_root):
+                    if entry.is_dir():
+                        fs_collections.add(entry.name)
+                        fs_files[entry.name] = set()
+                        for file_entry in os.scandir(entry.path):
+                            if file_entry.is_file():
+                                fs_files[entry.name].add(file_entry.name)
+                    elif entry.is_file():
+                        # Ana dizindeki dosyalar (koleksiyonsuz)
+                        fs_collections.add(None)
+                        fs_files.setdefault(None, set()).add(entry.name)
+                
+                # 2. Veritabanından koleksiyon ve dosyaları çek
+                db_collections = {c.name: c for c in session.query(Collection).all()}
+                db_files = dict()  # {collection_name: {file_name: File}}
+                for c in db_collections.values():
+                    db_files[c.name] = {f.file_name: f for f in c.files}
+                # Koleksiyonsuz dosyalar
+                db_files[None] = {f.file_name: f for f in session.query(File).filter(File.collection_id == None).all()}
+                
+                # 3. Eksik koleksiyonları ekle
+                added_collections = []
+                for cname in fs_collections:
+                    if cname is not None and cname not in db_collections:
+                        new_c = Collection(name=cname)
+                        session.add(new_c)
+                        session.flush()
+                        db_collections[cname] = new_c
+                        db_files[cname] = {}
+                        added_collections.append(cname)
+                
+                # 4. Fazla koleksiyonları sil
+                removed_collections = []
+                for cname in list(db_collections.keys()):
+                    if cname is not None and cname not in fs_collections:
+                        session.delete(db_collections[cname])
+                        removed_collections.append(cname)
+                        db_collections.pop(cname)
+                        db_files.pop(cname, None)
+                
+                # 5. Dosya ekle/sil işlemleri
+                added_files = []
+                removed_files = []
+                for cname in fs_collections:
+                    fs_file_set = fs_files.get(cname, set())
+                    db_file_dict = db_files.get(cname, {})
+                    # Eksik dosyaları ekle
+                    for fname in fs_file_set:
+                        if fname not in db_file_dict:
+                            # Dosya yolu ve boyutu
+                            if cname:
+                                rel_path = f"{cname}/{fname}"
+                                abs_path = os.path.join(cdn_root, cname, fname)
+                                collection_id = db_collections[cname].id
+                            else:
+                                rel_path = fname
+                                abs_path = os.path.join(cdn_root, fname)
+                                collection_id = None
+                            file_size = os.path.getsize(abs_path)
+                            mime_type, _ = mimetypes.guess_type(abs_path)
+                            new_file = File(
+                                file_name=fname,
+                                file_path=rel_path,
+                                file_size=file_size,
+                                mime_type=mime_type,
+                                collection_id=collection_id
+                            )
+                            session.add(new_file)
+                            added_files.append(rel_path)
+                    # Fazla dosyaları sil
+                    for fname in list(db_file_dict.keys()):
+                        if fname not in fs_file_set:
+                            session.delete(db_file_dict[fname])
+                            removed_files.append(f"{cname}/{fname}" if cname else fname)
+                
+                # 6. Koleksiyon istatistiklerini güncelle
+                for c in db_collections.values():
+                    c.update_stats(session)
+                session.commit()
+                return jsonify({
+                    "added_collections": added_collections,
+                    "removed_collections": removed_collections,
+                    "added_files": added_files,
+                    "removed_files": removed_files,
+                    "status": "ok"
+                })
+            finally:
+                session.close()
+        except ExpiredSignatureError:
+            abort(403, description="Forbidden: Token has expired")
+        except InvalidTokenError:
             abort(403, description="Forbidden: Invalid token")
         except Exception as e:
             return jsonify({"success": False, "message": str(e)}), 500 

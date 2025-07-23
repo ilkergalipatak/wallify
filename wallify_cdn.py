@@ -102,6 +102,12 @@ def create_admin():
     
     return auth_service.create_admin(username, email, password, admin_key)
 
+@app.route("/admin/sync_cdn_db", methods=["POST"])
+def sync_cdn_db():
+    return cdn_service.sync_cdn_db()
+
 if __name__ == "__main__":
     # Docker içinde çalışırken tüm arayüzlerden gelen istekleri dinle
     app.run(host="0.0.0.0", port=config.PORT, debug=config.DEBUG)
+
+

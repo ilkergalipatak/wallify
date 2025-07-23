@@ -5,7 +5,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 # Veritabanı ayarları
-DB_USER = os.getenv("DB_USER", "postgres")
+DB_USER = os.getenv("DB_USER", "wallify")
 DB_PASSWORD = os.getenv("DB_PASSWORD", "wallify12345")
 DB_NAME = os.getenv("DB_NAME", "wallify")
 DB_HOST = os.getenv("DB_HOST", "localhost")

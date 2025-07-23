@@ -127,8 +127,6 @@ def get_files_from_api(token=None, collection=None, page=1, per_page=100):
 def create_collection(name):
     """CDN klasöründe yeni bir koleksiyon (klasör) oluşturur"""
     try:
-        collection_path = os.path.join(settings.CDN_FOLDER, name)
-        os.makedirs(collection_path, exist_ok=True)
         # Önbelleği temizle
         clear_cache()
         return True
@@ -149,7 +147,7 @@ def api_create_collection(name, token=None):
             params={"token": token}
         )
         
-        if response.status_code == 200:
+        if response.status_code == 201:
             # Önbelleği temizle
             clear_cache()
             return response.json()

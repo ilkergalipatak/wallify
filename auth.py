@@ -235,3 +235,6 @@ class AuthService:
             return jsonify({"users": result}), 200
         finally:
             session.close() 
+
+
+

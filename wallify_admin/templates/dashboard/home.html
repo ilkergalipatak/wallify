@@ -14,11 +14,15 @@
         <a href="{% url 'dashboard:file_upload' %}" class="btn btn-primary me-2">
             <i class="fas fa-upload me-2"></i> Dosya Yükle
         </a>
-        <a href="{% url 'dashboard:collection_create' %}" class="btn btn-outline-primary">
+        <a href="{% url 'dashboard:collection_create' %}" class="btn btn-outline-primary me-2">
             <i class="fas fa-folder-plus me-2"></i> Koleksiyon Oluştur
         </a>
+        <button id="sync-cdn-btn" class="btn btn-outline-success">
+            <i class="fas fa-sync-alt me-2"></i> CDN ile Senkronize Et
+        </button>
     </div>
 </div>
+<div id="sync-cdn-result"></div>
 
 <!-- İstatistikler -->
 <div class="row mb-4">
@@ -152,4 +156,37 @@
         </div>
     </div>
 </div>
+{% endblock %} 
+
+{% block extra_js %}
+<script>
+    document.getElementById('sync-cdn-btn').addEventListener('click', function() {
+        var btn = this;
+        btn.disabled = true;
+        btn.innerHTML = '<i class="fas fa-sync fa-spin me-2"></i> Senkronize Ediliyor...';
+        fetch('{% url "dashboard:sync_with_cdn" %}', {
+            method: 'POST',
+            headers: {
+                'X-CSRFToken': '{{ csrf_token }}',
+                'Accept': 'application/json',
+            },
+        })
+        .then(response => response.json())
+        .then(data => {
+            btn.disabled = false;
+            btn.innerHTML = '<i class="fas fa-sync-alt me-2"></i> CDN ile Senkronize Et';
+            let resultDiv = document.getElementById('sync-cdn-result');
+            if (data.status === 'ok') {
+                resultDiv.innerHTML = '<div class="alert alert-success">Senkronizasyon başarılı!</div>';
+            } else {
+                resultDiv.innerHTML = '<div class="alert alert-danger">Hata: ' + (data.message || 'Bilinmeyen hata') + '</div>';
+            }
+        })
+        .catch(err => {
+            btn.disabled = false;
+            btn.innerHTML = '<i class="fas fa-sync-alt me-2"></i> CDN ile Senkronize Et';
+            document.getElementById('sync-cdn-result').innerHTML = '<div class="alert alert-danger">Hata: ' + err + '</div>';
+        });
+    });
+</script>
 {% endblock %} 
