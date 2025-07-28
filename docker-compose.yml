@@ -70,6 +70,8 @@ services:
     command: >
       sh -c "wait-for-it.sh flask:7545 -t 60 --
              cd /app/wallify_admin &&
+             python manage.py makemigrations &&
+             python manage.py migrate &&
              python manage.py runserver 0.0.0.0:8000"
     restart: unless-stopped
     networks:

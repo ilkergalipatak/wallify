@@ -114,7 +114,9 @@ def get_files_from_api(token=None, collection=None, page=1, per_page=100):
             
             # URL'leri tarayıcıda çalışacak şekilde dönüştür
             if 'files' in data:
-                data['files'] = [convert_docker_url_to_browser_url(file_url) for file_url in data['files']]
+                for file_info in data['files']:
+                    if isinstance(file_info, dict) and 'url' in file_info:
+                        file_info['url'] = convert_docker_url_to_browser_url(file_info['url'])
             
             return data
         else:

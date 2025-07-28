@@ -9,6 +9,7 @@ import shutil
 import requests
 import json
 import logging
+import datetime
 from django.contrib.auth import login as django_login
 from django.contrib.auth import logout as django_logout
 from django.views.decorators.csrf import csrf_exempt
@@ -306,29 +307,28 @@ def collection_detail(request, pk):
     # Tüm koleksiyonları al
     collections_data = get_collections_from_api(request.session.get('api_token'))
     
-    # pk indeksine göre koleksiyon adını bul
+    # pk indeksine göre koleksiyon bilgilerini bul
     collection_found = False
-    collection_name = ""
-    collection_id = ""
+    collection_data = None
     
     try:
         # Önce id'ye göre ara
         for collection in collections_data:
             if collection.get('id') == pk:
-                collection_name = collection.get('name')
-                collection_id = collection.get('id')
+                collection_data = collection
                 collection_found = True
                 break
         
         # Bulunamadıysa indekse göre ara
         if not collection_found:
-            collection = collections_data[int(pk) - 1]  # pk 1'den başlıyor varsayalım
-            collection_name = collection.get('name')
-            collection_id = collection.get('id')
+            collection_data = collections_data[int(pk) - 1]  # pk 1'den başlıyor varsayalım
             collection_found = True
     except (IndexError, ValueError):
         messages.error(request, "Koleksiyon bulunamadı.")
         return redirect('dashboard:collection_list')
+    
+    collection_name = collection_data.get('name')
+    collection_id = collection_data.get('id')
     
     # Koleksiyona ait dosyaları API'den al
     files_data = get_files_from_api(token=request.session.get('api_token'), collection=collection_name)
@@ -341,11 +341,28 @@ def collection_detail(request, pk):
         # Docker içindeki URL'yi tarayıcıda çalışacak şekilde dönüştür
         file_url = file_info.get('url', '')
         browser_url = convert_docker_url_to_browser_url(file_url)
+        
+        # Dosya boyutunu okunaklı formata dönüştür
+        file_size = file_info.get('file_size', 0)
+        size = file_size
+        readable_size = "0 B"
+        for unit in ['B', 'KB', 'MB', 'GB']:
+            if size < 1024 or unit == 'GB':
+                readable_size = f"{size:.2f} {unit}"
+                break
+            size /= 1024
+        
+        # Dosya türünü belirle
+        file_name = file_info.get('file_name', '')
+        _, ext = os.path.splitext(file_name)
+        is_image = ext.lower() in ['.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp']
+        
         files_with_token.append({
             'url': f"{browser_url}?token={token}",
-            'name': file_info.get('file_name', ''),
-            'size': file_info.get('file_size', 0),
-            'id': file_info.get('id', '')
+            'name': file_name,
+            'size': readable_size,
+            'id': file_info.get('id', ''),
+            'is_image': is_image
         })
     
     # Sayfalama
@@ -353,8 +370,40 @@ def collection_detail(request, pk):
     page_number = request.GET.get('page')
     page_obj = paginator.get_page(page_number)
     
+    # Collection bilgilerini hazırla
+    collection_info = {
+        'name': collection_name,
+        'id': collection_id,
+        'file_count': collection_data.get('file_count', 0),
+        'total_size': collection_data.get('total_file_size', 0),
+        'created_at': collection_data.get('created_at'),
+        'updated_at': collection_data.get('updated_at'),
+        'description': collection_data.get('description', '')
+    }
+    
+    # Toplam boyutu okunaklı formata dönüştür
+    total_size = collection_info['total_size']
+    for unit in ['B', 'KB', 'MB', 'GB']:
+        if total_size < 1024 or unit == 'GB':
+            collection_info['total_size'] = f"{total_size:.2f} {unit}"
+            break
+        total_size /= 1024
+    
+    # Tarihleri datetime objesine dönüştür
+    if collection_info['created_at']:
+        try:
+            collection_info['created_at'] = datetime.datetime.fromisoformat(collection_info['created_at'].replace('Z', '+00:00'))
+        except:
+            collection_info['created_at'] = None
+    
+    if collection_info['updated_at']:
+        try:
+            collection_info['updated_at'] = datetime.datetime.fromisoformat(collection_info['updated_at'].replace('Z', '+00:00'))
+        except:
+            collection_info['updated_at'] = None
+    
     context = {
-        'collection': {'name': collection_name, 'id': collection_id},
+        'collection': collection_info,
         'files': page_obj,
         'pk': pk,  # pk değişkenini context'e ekle
         'username': request.session.get('username'),
