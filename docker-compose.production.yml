@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
   # PostgreSQL veritabanı
   db:
@@ -11,7 +9,7 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql/data
     ports:
-      - "5432:5432"
+      - "6432:5432"
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres"]
       interval: 10s
@@ -22,6 +20,21 @@ services:
     networks:
       - app_network  # Özel ağına bağlanıyor
 
+  # Redis - Asenkron işlemler için mesaj kuyruğu
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - app_network
+
   # Flask API (CDN)
   flask:
     build:
@@ -30,9 +43,15 @@ services:
     depends_on:
       db:
         condition: service_healthy
+      redis:
+        condition: service_healthy
     environment:
       - DB_HOST=db
+      - REDIS_HOST=redis
       - DOCKER_ENVIRONMENT=true
+      - CELERY_BROKER_URL=redis://redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://redis:6379/0
+      - PYTHONPATH=/app:/app/wallify_admin
     env_file:
       - docker.production.env
     volumes:
@@ -40,11 +59,96 @@ services:
     ports:
       - "7545:7545"
     command: >
-      sh -c "wait-for-it.sh db:5432 -t 60 --
+      sh -c "/wait-for-it.sh db:5432 -t 60 &&
+             /wait-for-it.sh redis:6379 -t 60 --
              python wallify_cdn.py"
     restart: unless-stopped
     networks:
       - app_network  # Özel ağına bağlanıyor
+
+  # Celery Worker - Asenkron görevleri işlemek için
+  celery_worker:
+    build:
+      context: .
+      dockerfile: Dockerfile.celery
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      - DB_HOST=db
+      - REDIS_HOST=redis
+      - DOCKER_ENVIRONMENT=true
+      - CELERY_BROKER_URL=redis://redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://redis:6379/0
+      - DJANGO_SETTINGS_MODULE=config.settings
+      - PYTHONPATH=/app/wallify_admin:/app
+    env_file:
+      - docker.production.env
+    volumes:
+      - ./cdn:/app/cdn
+    command: >
+      sh -c "until nc -z db 5432; do echo waiting for db; sleep 1; done;
+             until nc -z redis 6379; do echo waiting for redis; sleep 1; done;
+             celery -A tasks worker --loglevel=info --concurrency=4"
+    restart: unless-stopped
+    networks:
+      - app_network
+
+  # Celery Beat - Zamanlanmış görevler için
+  celery_beat:
+    build:
+      context: .
+      dockerfile: Dockerfile.celery
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      - DB_HOST=db
+      - REDIS_HOST=redis
+      - DOCKER_ENVIRONMENT=true
+      - CELERY_BROKER_URL=redis://redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://redis:6379/0
+      - DJANGO_SETTINGS_MODULE=config.settings
+      - PYTHONPATH=/app/wallify_admin:/app
+    env_file:
+      - docker.production.env
+    volumes:
+      - ./cdn:/app/cdn
+      - celery_beat_data:/app/celerybeat-schedule
+    command: >
+      sh -c "until nc -z db 5432; do echo waiting for db; sleep 1; done;
+             until nc -z redis 6379; do echo waiting for redis; sleep 1; done;
+             celery -A tasks beat --loglevel=info --scheduler django_celery_beat.schedulers:DatabaseScheduler"
+    restart: unless-stopped
+    networks:
+      - app_network
+
+  # Flower - Celery monitoring
+  flower:
+    build:
+      context: .
+      dockerfile: Dockerfile.celery
+    depends_on:
+      - redis
+      - celery_worker
+    environment:
+      - DB_HOST=db
+      - REDIS_HOST=redis
+      - DOCKER_ENVIRONMENT=true
+      - CELERY_BROKER_URL=redis://redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://redis:6379/0
+    env_file:
+      - docker.production.env
+    ports:
+      - "5555:5555"
+    command: celery -A tasks flower --port=5555
+    restart: unless-stopped
+    networks:
+      - app_network
 
   # Django Admin Panel
   django:
@@ -53,6 +157,7 @@ services:
       dockerfile: Dockerfile.django
     depends_on:
       - flask
+      - redis
     env_file:
       - docker.production.env
     environment:
@@ -61,7 +166,10 @@ services:
       - BROWSER_CDN_API_URL=https://cdn.craftergarage.com
       - CDN_PUBLIC_URL=https://cdn.craftergarage.com
       - DB_HOST=db
+      - REDIS_HOST=redis
       - DOCKER_ENVIRONMENT=true
+      - CELERY_BROKER_URL=redis://redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://redis:6379/0
       - DJANGO_ALLOWED_HOSTS=localhost,127.0.0.1,django,flask,admin.craftergarage.com,cdn.craftergarage.com
     volumes:
       - ./cdn:/app/cdn
@@ -69,7 +177,8 @@ services:
     ports:
       - "8000:8000"
     command: >
-      sh -c "wait-for-it.sh flask:7545 -t 60 --
+      sh -c "/usr/local/bin/wait-for-it.sh flask:7545 -t 60 &&
+             /usr/local/bin/wait-for-it.sh redis:6379 -t 60 --
              cd /app/wallify_admin &&
              python manage.py makemigrations &&
              python manage.py migrate &&
@@ -78,8 +187,38 @@ services:
     networks:
       - app_network  # Özel ağına bağlanıyor
 
+  # Test Servisi - Asenkron sistem testleri için
+  test:
+    build:
+      context: .
+      dockerfile: Dockerfile.celery
+    depends_on:
+      - flask
+      - celery_worker
+      - redis
+    environment:
+      - CDN_API_URL=http://flask:7545
+      - DB_HOST=db
+      - REDIS_HOST=redis
+      - DOCKER_ENVIRONMENT=true
+      - CELERY_BROKER_URL=redis://redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://redis:6379/0
+    env_file:
+      - docker.production.env
+    volumes:
+      - ./cdn:/app/cdn
+    command: >
+      sh -c "/wait-for-it.sh flask:7545 -t 60 &&
+             /wait-for-it.sh redis:6379 -t 60 --
+             sleep 10 &&
+             python test_async_system.py"
+    networks:
+      - app_network
+
 volumes:
   postgres_data:
+  redis_data:
+  celery_beat_data:
 
 networks:
   app_network:  # Özel ağ tanımlandı

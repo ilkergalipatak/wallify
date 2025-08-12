@@ -9,12 +9,13 @@ DB_USER = os.getenv("DB_USER", "postgres")
 DB_PASSWORD = os.getenv("DB_PASSWORD", "")
 DB_NAME = os.getenv("DB_NAME", "wallify")
 DB_HOST = os.getenv("DB_HOST", "localhost")
+DB_PORT = int(os.getenv("DB_PORT", "5432"))
 
 # Docker ortamında çalışırken DB_HOST değerini kontrol et
 if os.environ.get("DOCKER_ENVIRONMENT") == "true":
     DB_HOST = "db"  # Docker Compose'daki servis adı
 
-DATABASE_URL = f"postgresql://{DB_USER}:{DB_PASSWORD}@{DB_HOST}/{DB_NAME}"
+DATABASE_URL = f"postgresql://{DB_USER}:{DB_PASSWORD}@{DB_HOST}:{DB_PORT}/{DB_NAME}"
 
 # JWT ayarları
 JWT_SECRET = os.getenv("JWT_SECRET", "")
