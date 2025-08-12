@@ -431,6 +431,26 @@ def api_bulk_upload(files, collection=None, token=None):
         logger.error(f"Dosyalar yüklenemedi: {str(e)}")
         return {"success": False, "error": str(e)}
 
+def api_bulk_move(files, target_collection, token=None):
+    """CDN API kullanarak çoklu dosya taşıma"""
+    try:
+        if not token:
+            logger.error("API token bulunamadı")
+            return {"success": False, "error": "API token bulunamadı"}
+
+        url = f"{settings.CDN_API_URL}/admin/move_files"
+        payload = {"files": files, "target_collection": target_collection}
+        response = requests.post(url, json=payload, params={"token": token})
+        if response.status_code == 200:
+            clear_cache()
+            return response.json()
+        else:
+            logger.error(f"Dosyalar taşınamadı: {response.text}")
+            return {"success": False, "error": response.text}
+    except Exception as e:
+        logger.error(f"Dosyalar taşınamadı: {str(e)}")
+        return {"success": False, "error": str(e)}
+
 def api_delete_file(file_path, token=None):
     """CDN API kullanarak dosya silme"""
     try:

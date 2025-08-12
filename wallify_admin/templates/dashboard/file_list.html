@@ -106,6 +106,22 @@
         </div>
         <div class="card-body">
             <!-- Grid Görünümü -->
+            <form id="bulkMoveForm" method="post" class="mb-3">
+                {% csrf_token %}
+                <div class="d-flex align-items-center" style="gap: 8px;">
+                    <label class="form-label mb-0">Seçilenleri taşı:</label>
+                    <select id="targetCollection" class="form-select form-select-sm" style="width: auto;">
+                        <option value="">Hedef koleksiyon seçin</option>
+                        <option value="none">Ana Dizin</option>
+                        {% for collection in collections %}
+                            <option value="{{ collection.name }}">{{ collection.name }}</option>
+                        {% endfor %}
+                    </select>
+                    <button type="button" id="bulkMoveBtn" class="btn btn-sm btn-primary">
+                        <i class="fas fa-arrows-alt"></i> Taşı
+                    </button>
+                </div>
+            </form>
             <div class="row" id="gridView">
                 {% for file in files %}
                 <div class="col-md-3 mb-4">
@@ -118,6 +134,9 @@
                             {% endif %}
                         </div>
                         <div class="card-body">
+                            <div class="form-check mb-2 text-center">
+                                <input class="form-check-input select-file" type="checkbox" value="{{ file.path }}">
+                            </div>
                             <h6 class="card-title text-truncate text-center" title="{{ file.name }}">{{ file.name }}</h6>
                             <p class="card-text small text-muted text-center">{{ file.size }}</p>
                             <p class="card-text small text-muted">
@@ -159,7 +178,7 @@
                     </thead>
                     <tbody>
                         {% for file in files %}
-                        <tr>
+                        <tr class="list-row">
                             <td>
                                 {% if file.is_image %}
                                     <img src="{{ file.url }}" class="thumbnail open-image" data-image-url="{{ file.url }}" data-image-name="{{ file.name }}" width="64" alt="{{ file.name }}" style="cursor: zoom-in;">
@@ -168,7 +187,10 @@
                                 {% endif %}
                             </td>
                             <td>
-                                <a href="{{ file.url }}" target="_blank">{{ file.name }}</a>
+                                <div class="form-check">
+                                    <input class="form-check-input select-file" type="checkbox" value="{{ file.path }}">
+                                    <a href="{{ file.url }}" target="_blank">{{ file.name }}</a>
+                                </div>
                             </td>
                             <td>
                                 {% if file.collection %}
@@ -411,6 +433,70 @@
             prevBtn.addEventListener('click', () => openAt((currentIndex - 1 + gallery.length) % gallery.length));
             nextBtn.addEventListener('click', () => openAt((currentIndex + 1) % gallery.length));
         }
+
+        // Satıra/karta tıklayınca seçimi toggle et (görsel tıklaması hariç)
+        document.querySelectorAll('#gridView .card').forEach(card => {
+            const checkbox = card.querySelector('.select-file');
+            const img = card.querySelector('img.open-image');
+            card.addEventListener('click', (e) => {
+                if (img && img.contains(e.target)) return;
+                if (checkbox) {
+                    checkbox.checked = !checkbox.checked;
+                    card.classList.toggle('border-primary', checkbox.checked);
+                    card.classList.toggle('shadow', checkbox.checked);
+                }
+            });
+        });
+        document.querySelectorAll('#listView tr.list-row').forEach(row => {
+            const checkbox = row.querySelector('.select-file');
+            const img = row.querySelector('img.open-image');
+            row.addEventListener('click', (e) => {
+                if (img && img.contains(e.target)) return;
+                if (checkbox) {
+                    checkbox.checked = !checkbox.checked;
+                    row.classList.toggle('table-primary', checkbox.checked);
+                }
+            });
+        });
+
+        // Çoklu taşıma işlemi
+        const bulkBtn = document.getElementById('bulkMoveBtn');
+        const targetSelect = document.getElementById('targetCollection');
+        bulkBtn.addEventListener('click', function() {
+            const selected = Array.from(document.querySelectorAll('.select-file:checked')).map(cb => cb.value);
+            if (!selected.length) { alert('Lütfen en az bir dosya seçin.'); return; }
+            const target = targetSelect.value;
+            if (target === '') { alert('Lütfen hedef koleksiyonu seçin.'); return; }
+
+            // Seçilen dosyaların relative path'e dönüştürülmesi (cdn köküne göre)
+            const relFiles = selected.map(p => {
+                // p zaten relative olabilir; değilse kırp
+                const idx = p.indexOf('/cdn/');
+                if (idx >= 0) return p.slice(idx + 5);
+                // path alanı doğrudan relative geliyorsa
+                if (p.startsWith('/')) return p.replace(/^\//, '');
+                return p;
+            });
+
+            fetch('/admin/move_files', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': getCookie('csrftoken')
+                },
+                body: JSON.stringify({ files: relFiles, target_collection: (target === 'none' ? null : target) })
+            }).then(r => r.json()).then(data => {
+                if (data.success) {
+                    alert('Dosyalar taşındı. Sayfa yenileniyor...');
+                    window.location.reload();
+                } else {
+                    alert('Hata: ' + (data.message || 'Taşıma işlemi başarısız'));
+                }
+            }).catch(err => {
+                console.error(err);
+                alert('Hata: ' + err);
+            });
+        });
     });
 </script>
 {% endblock %} 

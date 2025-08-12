@@ -97,6 +97,10 @@ def create_collection_endpoint():
 def get_admin_stats():
     return cdn_service.get_admin_stats()
 
+@app.route("/admin/move_files", methods=["POST"])
+def move_files():
+    return cdn_service.bulk_move_files()
+
 @app.route("/admin/users/<user_id>", methods=["PUT"])
 def update_user(user_id):
     return auth_service.update_user(user_id, request.json)

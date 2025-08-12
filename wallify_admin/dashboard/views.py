@@ -23,6 +23,7 @@ from .utils import (
     upload_file, delete_file, rename_file, move_file,
     scan_cdn_folder, get_file_info,
     api_upload_file, api_bulk_upload, api_delete_file, api_delete_collection, api_update_collection,
+    api_bulk_move,
     convert_docker_url_to_browser_url, api_create_collection, clear_cache
 )
 
@@ -889,6 +890,20 @@ def api_files(request):
     
     files = get_files_from_api(collection=collection, page=page, per_page=per_page)
     return JsonResponse(files)
+
+@api_login_required
+def api_bulk_move_files(request):
+    if request.method != 'POST':
+        return JsonResponse({'success': False, 'message': 'Only POST supported'}, status=405)
+    try:
+        data = json.loads(request.body.decode('utf-8'))
+    except Exception:
+        data = {}
+    files = data.get('files') or []
+    target = data.get('target_collection')
+    result = api_bulk_move(files, target, request.session.get('api_token'))
+    status = 200 if result.get('success') else 400
+    return JsonResponse(result, status=status)
 
 @api_login_required
 def proxy_image(request):

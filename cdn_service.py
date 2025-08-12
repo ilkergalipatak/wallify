@@ -218,6 +218,99 @@ class CDNService:
         except InvalidTokenError:
             abort(403, description="Forbidden: Invalid token")
     
+    def bulk_move_files(self):
+        """Birden fazla dosyayı başka bir koleksiyona taşır (sadece admin)"""
+        token = request.args.get("token")
+        if not token:
+            token = request.headers.get("Authorization")
+            if not token:
+                abort(403, description="Forbidden: Missing token")
+        try:
+            decoded_token = jwt.decode(token, config.JWT_SECRET, algorithms=[config.JWT_ALGORITHM])
+            user_id = decoded_token.get("user_id")
+            if not user_id:
+                abort(403, description="Forbidden: Invalid token payload")
+            self.auth_service.verify_admin(user_id)
+
+            data = request.get_json(silent=True) or {}
+            file_paths = data.get("files", [])  # örn: ["Nature/img1.jpg", "Anime/x.png"] relative path
+            target_collection = data.get("target_collection")  # None veya adı
+            if not isinstance(file_paths, list) or target_collection is None:
+                return jsonify({"success": False, "message": "files (list) ve target_collection zorunludur"}), 400
+
+            session = self.Session()
+            try:
+                # Hedef koleksiyonu hazırla (yoksa oluştur)
+                target_collection_id = None
+                if target_collection:
+                    c = session.query(Collection).filter(Collection.name == target_collection).first()
+                    if not c:
+                        c = Collection(name=target_collection)
+                        session.add(c)
+                        session.flush()
+                    target_collection_id = c.id
+
+                moved, failed = [], []
+                for rel in file_paths:
+                    abs_old = os.path.join(self.cdn_folder, rel)
+                    if not os.path.isfile(abs_old):
+                        failed.append({"file": rel, "error": "Dosya bulunamadı"})
+                        continue
+
+                    # Dosya adı ve yeni yol
+                    fname = os.path.basename(abs_old)
+                    if target_collection:
+                        abs_target_dir = os.path.join(self.cdn_folder, target_collection)
+                        os.makedirs(abs_target_dir, exist_ok=True)
+                    else:
+                        abs_target_dir = self.cdn_folder
+                    abs_new = os.path.join(abs_target_dir, fname)
+
+                    # Çakışmayı önle
+                    if os.path.exists(abs_new) and abs_new != abs_old:
+                        name, ext = os.path.splitext(fname)
+                        counter = 1
+                        while os.path.exists(abs_new):
+                            abs_new = os.path.join(abs_target_dir, f"{name}_{counter}{ext}")
+                            counter += 1
+
+                    # Taşı
+                    try:
+                        os.makedirs(os.path.dirname(abs_new), exist_ok=True)
+                        os.replace(abs_old, abs_new)
+                    except Exception as e:
+                        failed.append({"file": rel, "error": str(e)})
+                        continue
+
+                    # DB güncelle
+                    db_file = session.query(File).filter(File.file_path == rel).first()
+                    new_rel = os.path.relpath(abs_new, self.cdn_folder).replace("\\", "/")
+                    if db_file:
+                        db_file.file_path = new_rel
+                        db_file.file_name = os.path.basename(new_rel)
+                        db_file.collection_id = target_collection_id
+                    moved.append(new_rel)
+
+                # Koleksiyon istatistikleri
+                for col in session.query(Collection).all():
+                    col.update_stats(session)
+
+                session.commit()
+
+                return jsonify({
+                    "success": True,
+                    "moved": moved,
+                    "failed": failed
+                })
+            finally:
+                session.close()
+        except ExpiredSignatureError:
+            abort(403, description="Forbidden: Token has expired")
+        except InvalidTokenError:
+            abort(403, description="Forbidden: Invalid token")
+        except Exception as e:
+            return jsonify({"success": False, "message": str(e)}), 500
+
     def file_upload(self):
         """Dosya yükleme (sadece admin kullanıcılar)"""
         # Token kontrolü

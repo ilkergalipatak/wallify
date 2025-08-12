@@ -107,6 +107,21 @@
     {% csrf_token %}
     <div class="card-body">
         {% if files %}
+            <form id="bulkMoveForm" method="post" class="mb-3">
+                {% csrf_token %}
+                <div class="d-flex align-items-center" style="gap: 8px;">
+                    <label class="form-label mb-0">Seçilenleri taşı:</label>
+                    <select id="targetCollection" class="form-select form-select-sm" style="width: auto;">
+                        <option value="">Hedef koleksiyon seçin</option>
+                        <option value="none">Ana Dizin</option>
+                        {% for c in files.paginator.object_list %}{% endfor %}
+                        {% for c in collections %}{% endfor %}
+                    </select>
+                    <button type="button" id="bulkMoveBtn" class="btn btn-sm btn-primary">
+                        <i class="fas fa-arrows-alt"></i> Taşı
+                    </button>
+                </div>
+            </form>
             <div class="row" id="fileGrid">
                 {% for file in files %}
                 <div class="col-md-3 mb-4 file-item">
@@ -119,6 +134,9 @@
                             {% endif %}
                         </div>
                         <div class="card-body">
+                            <div class="form-check mb-2 text-center">
+                                <input class="form-check-input select-file" type="checkbox" value="{{ file.url|safe }}">
+                            </div>
                             <h6 class="card-title text-truncate text-center" title="{{ file.name }}">{{ file.name }}</h6>
                             <p class="card-text small text-muted text-center">{{ file.size }}</p>
                         </div>
@@ -311,6 +329,58 @@
             if (e.key === 'ArrowLeft') prevBtn.click();
             if (e.key === 'ArrowRight') nextBtn.click();
         });
+        
+        // Kart boş alanına tıklayınca seçim toggle olsun (resme tıklama modal içindir)
+        document.querySelectorAll('#fileGrid .card').forEach(card => {
+            const checkbox = card.querySelector('.select-file');
+            const img = card.querySelector('img.open-image');
+            card.addEventListener('click', (e) => {
+                // Görsele veya göz butonuna tıklamayı sayma
+                if (img && img.contains(e.target)) return;
+                const viewBtn = card.querySelector('.view-image-btn');
+                if (viewBtn && viewBtn.contains(e.target)) return;
+                if (checkbox) {
+                    checkbox.checked = !checkbox.checked;
+                    card.classList.toggle('border-primary', checkbox.checked);
+                    card.classList.toggle('shadow', checkbox.checked);
+                }
+            });
+        });
+
+        // Çoklu taşıma (koleksiyon detayında)
+        const bulkBtn = document.getElementById('bulkMoveBtn');
+        const targetSelect = document.getElementById('targetCollection');
+        if (bulkBtn) {
+            bulkBtn.addEventListener('click', function() {
+                const selected = Array.from(document.querySelectorAll('.select-file:checked')).map(cb => cb.value);
+                if (!selected.length) { alert('Lütfen en az bir dosya seçin.'); return; }
+                const target = targetSelect.value;
+                if (target === '') { alert('Lütfen hedef koleksiyonu seçin.'); return; }
+                const relFiles = selected.map(u => {
+                    const base = u.split('?')[0];
+                    const idx = base.indexOf('/cdn/');
+                    return idx >= 0 ? base.slice(idx + 5) : base;
+                });
+                fetch('/api/bulk-move/', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value
+                    },
+                    body: JSON.stringify({ files: relFiles, target_collection: (target === 'none' ? None : target) })
+                }).then(r => r.json()).then(data => {
+                    if (data.success) {
+                        alert('Dosyalar taşındı. Sayfa yenileniyor...');
+                        window.location.reload();
+                    } else {
+                        alert('Hata: ' + (data.message || 'Taşıma işlemi başarısız'));
+                    }
+                }).catch(err => {
+                    console.error(err);
+                    alert('Hata: ' + err);
+                });
+            });
+        }
         
         // Dosya silme işlemi
         const deleteButtons = document.querySelectorAll('.delete-file-btn');

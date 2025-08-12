@@ -165,7 +165,7 @@ services:
     environment:
       - CDN_API_URL=http://flask:7545
       - DOCKER_CDN_API_URL=http://flask:7545
-      - BROWSER_CDN_API_URL=http://cdn.craftergarage.com
+      - BROWSER_CDN_API_URL=http://localhost:7545
       - DB_HOST=db
       - REDIS_HOST=redis
       - DOCKER_ENVIRONMENT=true

@@ -24,6 +24,7 @@ urlpatterns = [
     path('api/collections/', views.api_collections, name='api_collections'),
     path('api/files/', views.api_files, name='api_files'),
     path('api/delete-file/', views.api_delete_file_endpoint, name='api_delete_file'),
+    path('api/bulk-move/', views.api_bulk_move_files, name='api_bulk_move_files'),
     
     # Add proxy-image view
     path('proxy-image/', views.proxy_image, name='proxy_image'),
