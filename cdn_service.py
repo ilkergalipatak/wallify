@@ -15,6 +15,14 @@ import mimetypes
 import config
 from models import File, Collection
 
+# Celery tasks import (opsiyonel - sadece mevcutse)
+CELERY_AVAILABLE = False
+try:
+    from tasks import process_image_async, generate_thumbnails, bulk_process_images
+    CELERY_AVAILABLE = True
+except ImportError:
+    pass
+
 class CDNService:
     def __init__(self, session_maker, auth_service):
         self.Session = session_maker
@@ -77,7 +85,7 @@ class CDNService:
             self.auth_service.verify_active_user(user_id)
 
             page = request.args.get("page", 1, type=int)
-            per_page = request.args.get("per_page", 10, type=int)
+            per_page = request.args.get("per_page", 50, type=int)
 
             # Veritabanından dosyaları çek
             session = self.Session()
@@ -93,10 +101,18 @@ class CDNService:
                     file_dict["url"] = f"{base_url}/cdn/{file.file_path}"
                     file_list.append(file_dict)
                 
+                # Pagination bilgilerini hesapla
+                total_pages = (total + per_page - 1) // per_page
+                has_next = page < total_pages
+                has_prev = page > 1
+                
                 return jsonify({
                     "page": page,
                     "per_page": per_page,
                     "total": total,
+                    "total_pages": total_pages,
+                    "has_next": has_next,
+                    "has_prev": has_prev,
                     "files": file_list,
                 })
             finally:
@@ -132,7 +148,7 @@ class CDNService:
                     abort(404, description="Collection not found")
                 
                 page = request.args.get("page", 1, type=int)
-                per_page = request.args.get("per_page", 10, type=int)
+                per_page = request.args.get("per_page", 50, type=int)
                 
                 total = session.query(File).filter(File.collection_id == collection.id).count()
                 files = session.query(File).filter(File.collection_id == collection.id).order_by(File.created_at.desc()).offset((page - 1) * per_page).limit(per_page).all()
@@ -145,10 +161,18 @@ class CDNService:
                     file_dict["url"] = f"{base_url}/cdn/{file.file_path}"
                     file_list.append(file_dict)
                 
+                # Pagination bilgilerini hesapla
+                total_pages = (total + per_page - 1) // per_page
+                has_next = page < total_pages
+                has_prev = page > 1
+                
                 return jsonify({
                     "page": page,
                     "per_page": per_page,
                     "total": total,
+                    "total_pages": total_pages,
+                    "has_next": has_next,
+                    "has_prev": has_prev,
                     "collection": collection.to_dict(),
                     "files": file_list,
                 })
@@ -263,28 +287,65 @@ class CDNService:
                 # Dosya yolunu veritabanı için düzenle
                 rel_path = os.path.relpath(file_path, self.cdn_folder).replace("\\", "/")
                 
-                # Veritabanına kaydet
-                db_file = File(
-                    file_name=os.path.basename(file_path),
-                    file_path=rel_path,
-                    file_size=file_size,
-                    mime_type=mime_type,
-                    collection_id=collection_id
-                )
-                session.add(db_file)
+                # Asenkron işleme için kontrol
+                async_processing = request.form.get('async', 'false').lower() == 'true'
                 
-                # Koleksiyon istatistiklerini güncelle
-                if collection_id:
-                    collection.update_stats(session)
-                
-                session.commit()
-                
-                # Dosya bilgilerini döndür
-                file_info = db_file.to_dict()
-                file_info["success"] = True
-                file_info["url"] = f"{config.CDN_PUBLIC_URL.rstrip('/')}/cdn/{rel_path}"
-                
-                return jsonify(file_info), 201
+                if async_processing and CELERY_AVAILABLE:
+                    # Asenkron işleme - dosyayı hemen kaydet ama işlemeyi arka planda yap
+                    db_file = File(
+                        file_name=os.path.basename(file_path),
+                        file_path=rel_path,
+                        file_size=file_size,
+                        mime_type=mime_type,
+                        collection_id=collection_id
+                    )
+                    session.add(db_file)
+                    session.commit()
+                    
+                    # Asenkron görevleri başlat
+                    task_ids = []
+                    
+                    # Resim işleme görevi
+                    if mime_type and mime_type.startswith('image/'):
+                        process_task = process_image_async.delay(rel_path, user_id, collection_name)
+                        task_ids.append(('process_image', process_task.id))
+                        
+                        # Thumbnail oluşturma görevi
+                        thumbnail_task = generate_thumbnails.delay(rel_path)
+                        task_ids.append(('generate_thumbnails', thumbnail_task.id))
+                    
+                    # Dosya bilgilerini döndür
+                    file_info = db_file.to_dict()
+                    file_info["success"] = True
+                    file_info["url"] = f"{config.CDN_PUBLIC_URL.rstrip('/')}/cdn/{rel_path}"
+                    file_info["async_processing"] = True
+                    file_info["task_ids"] = task_ids
+                    
+                    return jsonify(file_info), 201
+                else:
+                    # Senkron işleme - mevcut davranış
+                    db_file = File(
+                        file_name=os.path.basename(file_path),
+                        file_path=rel_path,
+                        file_size=file_size,
+                        mime_type=mime_type,
+                        collection_id=collection_id
+                    )
+                    session.add(db_file)
+                    
+                    # Koleksiyon istatistiklerini güncelle
+                    if collection_id:
+                        collection.update_stats(session)
+                    
+                    session.commit()
+                    
+                    # Dosya bilgilerini döndür
+                    file_info = db_file.to_dict()
+                    file_info["success"] = True
+                    file_info["url"] = f"{config.CDN_PUBLIC_URL.rstrip('/')}/cdn/{rel_path}"
+                    file_info["async_processing"] = False
+                    
+                    return jsonify(file_info), 201
             except Exception as e:
                 session.rollback()
                 raise e
@@ -346,71 +407,154 @@ class CDNService:
                 else:
                     target_dir = self.cdn_folder
                 
-                # Sonuçları tutacak liste
-                results = []
+                # Asenkron işleme için kontrol
+                async_processing = request.form.get('async', 'false').lower() == 'true'
                 
-                # Her dosya için işlem yap
-                for file in files:
-                    if file.filename == '':
-                        continue
-                        
-                    file_path = os.path.join(target_dir, file.filename)
+                if async_processing and CELERY_AVAILABLE:
+                    # Asenkron toplu işleme
+                    file_paths = []
+                    results = []
                     
-                    # Dosya adı çakışması kontrolü
-                    if os.path.exists(file_path):
-                        name, ext = os.path.splitext(file.filename)
-                        counter = 1
-                        while os.path.exists(file_path):
-                            new_name = f"{name}_{counter}{ext}"
-                            file_path = os.path.join(target_dir, new_name)
-                            counter += 1
+                    # Önce tüm dosyaları kaydet
+                    for file in files:
+                        if file.filename == '':
+                            continue
+                            
+                        file_path = os.path.join(target_dir, file.filename)
+                        
+                        # Dosya adı çakışması kontrolü
+                        if os.path.exists(file_path):
+                            name, ext = os.path.splitext(file.filename)
+                            counter = 1
+                            while os.path.exists(file_path):
+                                new_name = f"{name}_{counter}{ext}"
+                                file_path = os.path.join(target_dir, new_name)
+                                counter += 1
+                        
+                        # Dosyayı kaydet
+                        try:
+                            file.save(file_path)
+                            file_size = os.path.getsize(file_path)
+                            
+                            # MIME tipini belirle
+                            mime_type, _ = mimetypes.guess_type(file_path)
+                            
+                            # Dosya yolunu veritabanı için düzenle
+                            rel_path = os.path.relpath(file_path, self.cdn_folder).replace("\\", "/")
+                            
+                            # Veritabanına kaydet
+                            db_file = File(
+                                file_name=os.path.basename(file_path),
+                                file_path=rel_path,
+                                file_size=file_size,
+                                mime_type=mime_type,
+                                collection_id=collection_id
+                            )
+                            session.add(db_file)
+                            
+                            # Dosya bilgilerini ekle
+                            file_info = db_file.to_dict()
+                            file_info["success"] = True
+                            file_info["url"] = f"{config.CDN_PUBLIC_URL.rstrip('/')}/cdn/{rel_path}"
+                            file_info["async_processing"] = True
+                            results.append(file_info)
+                            
+                            # Resim dosyaları için asenkron işleme listesine ekle
+                            if mime_type and mime_type.startswith('image/'):
+                                file_paths.append(rel_path)
+                                
+                        except Exception as e:
+                            results.append({
+                                "success": False,
+                                "name": file.filename,
+                                "message": str(e)
+                            })
                     
-                    # Dosyayı kaydet
-                    try:
-                        file.save(file_path)
-                        file_size = os.path.getsize(file_path)
+                    session.commit()
+                    
+                    # Asenkron görevleri başlat
+                    task_ids = []
+                    if file_paths:
+                        bulk_task = bulk_process_images.delay(file_paths, user_id, collection_name)
+                        task_ids.append(('bulk_process_images', bulk_task.id))
+                    
+                    return jsonify({
+                        "success": True,
+                        "total": len(files),
+                        "successful": len([r for r in results if r.get("success", False)]),
+                        "failed": len([r for r in results if not r.get("success", False)]),
+                        "results": results,
+                        "async_processing": True,
+                        "task_ids": task_ids
+                    }), 201
+                else:
+                    # Senkron toplu işleme - mevcut davranış
+                    results = []
+                    
+                    # Her dosya için işlem yap
+                    for file in files:
+                        if file.filename == '':
+                            continue
+                            
+                        file_path = os.path.join(target_dir, file.filename)
                         
-                        # MIME tipini belirle
-                        mime_type, _ = mimetypes.guess_type(file_path)
+                        # Dosya adı çakışması kontrolü
+                        if os.path.exists(file_path):
+                            name, ext = os.path.splitext(file.filename)
+                            counter = 1
+                            while os.path.exists(file_path):
+                                new_name = f"{name}_{counter}{ext}"
+                                file_path = os.path.join(target_dir, new_name)
+                                counter += 1
                         
-                        # Dosya yolunu veritabanı için düzenle
-                        rel_path = os.path.relpath(file_path, self.cdn_folder).replace("\\", "/")
-                        
-                        # Veritabanına kaydet
-                        db_file = File(
-                            file_name=os.path.basename(file_path),
-                            file_path=rel_path,
-                            file_size=file_size,
-                            mime_type=mime_type,
-                            collection_id=collection_id
-                        )
-                        session.add(db_file)
-                        
-                        # Dosya bilgilerini ekle
-                        file_info = db_file.to_dict()
-                        file_info["success"] = True
-                        file_info["url"] = f"{config.CDN_PUBLIC_URL.rstrip('/')}/cdn/{rel_path}"
-                        results.append(file_info)
-                    except Exception as e:
-                        results.append({
-                            "success": False,
-                            "name": file.filename,
-                            "message": str(e)
-                        })
-                
-                # Koleksiyon istatistiklerini güncelle
-                if collection_id:
-                    collection.update_stats(session)
-                
-                session.commit()
-                
-                return jsonify({
-                    "success": True,
-                    "total": len(files),
-                    "successful": len([r for r in results if r.get("success", False)]),
-                    "failed": len([r for r in results if not r.get("success", False)]),
-                    "results": results
-                }), 201
+                        # Dosyayı kaydet
+                        try:
+                            file.save(file_path)
+                            file_size = os.path.getsize(file_path)
+                            
+                            # MIME tipini belirle
+                            mime_type, _ = mimetypes.guess_type(file_path)
+                            
+                            # Dosya yolunu veritabanı için düzenle
+                            rel_path = os.path.relpath(file_path, self.cdn_folder).replace("\\", "/")
+                            
+                            # Veritabanına kaydet
+                            db_file = File(
+                                file_name=os.path.basename(file_path),
+                                file_path=rel_path,
+                                file_size=file_size,
+                                mime_type=mime_type,
+                                collection_id=collection_id
+                            )
+                            session.add(db_file)
+                            
+                            # Dosya bilgilerini ekle
+                            file_info = db_file.to_dict()
+                            file_info["success"] = True
+                            file_info["url"] = f"{config.CDN_PUBLIC_URL.rstrip('/')}/cdn/{rel_path}"
+                            file_info["async_processing"] = False
+                            results.append(file_info)
+                        except Exception as e:
+                            results.append({
+                                "success": False,
+                                "name": file.filename,
+                                "message": str(e)
+                            })
+                    
+                    # Koleksiyon istatistiklerini güncelle
+                    if collection_id:
+                        collection.update_stats(session)
+                    
+                    session.commit()
+                    
+                    return jsonify({
+                        "success": True,
+                        "total": len(files),
+                        "successful": len([r for r in results if r.get("success", False)]),
+                        "failed": len([r for r in results if not r.get("success", False)]),
+                        "results": results,
+                        "async_processing": False
+                    }), 201
             except Exception as e:
                 session.rollback()
                 raise e

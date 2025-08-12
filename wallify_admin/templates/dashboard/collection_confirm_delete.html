@@ -1,0 +1,75 @@
+{% extends 'dashboard/base.html' %}
+{% load dashboard_filters %}
+
+{% block title %}{{ collection.name }} Koleksiyonu Sil - Wallify CDN Yönetimi{% endblock %}
+
+{% block breadcrumb %}
+<li class="breadcrumb-item"><a href="{% url 'dashboard:home' %}">Ana Sayfa</a></li>
+<li class="breadcrumb-item"><a href="{% url 'dashboard:collection_list' %}">Koleksiyonlar</a></li>
+<li class="breadcrumb-item"><a href="{% url 'dashboard:collection_detail' pk %}">{{ collection.name }}</a></li>
+<li class="breadcrumb-item active">Sil</li>
+{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-md-8">
+        <div class="card">
+            <div class="card-header bg-danger text-white">
+                <h5 class="card-title mb-0">
+                    <i class="fas fa-exclamation-triangle me-2"></i> Koleksiyon Silme Onayı
+                </h5>
+            </div>
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-md-4 text-center mb-4 mb-md-0">
+                        <i class="fas fa-folder fa-5x text-warning mb-3"></i>
+                    </div>
+                    <div class="col-md-8">
+                        <h4>{{ collection.name }}</h4>
+                        <p class="text-danger">Bu koleksiyonu silmek istediğinizden emin misiniz?</p>
+                        <p>Bu işlem geri alınamaz ve koleksiyon içindeki tüm dosyalar kalıcı olarak silinecektir.</p>
+                        
+                        <table class="table table-sm">
+                            <tbody>
+                                <tr>
+                                    <th>Dosya Sayısı:</th>
+                                    <td>{{ collection.file_count }} dosya</td>
+                                </tr>
+                                <tr>
+                                    <th>Toplam Boyut:</th>
+                                    <td>{{ collection.total_size }}</td>
+                                </tr>
+                                <tr>
+                                    <th>Oluşturulma Tarihi:</th>
+                                    <td>{{ collection.created_at|date:"d.m.Y H:i" }}</td>
+                                </tr>
+                                <tr>
+                                    <th>Son Güncelleme:</th>
+                                    <td>{{ collection.updated_at|date:"d.m.Y H:i" }}</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                        
+                        <div class="alert alert-warning">
+                            <i class="fas fa-warning me-2"></i>
+                            <strong>Dikkat:</strong> Bu koleksiyon içindeki {{ collection.file_count }} dosya da silinecektir.
+                        </div>
+                    </div>
+                </div>
+                
+                <form method="post" class="mt-4">
+                    {% csrf_token %}
+                    <div class="d-flex justify-content-between">
+                        <a href="{% url 'dashboard:collection_detail' pk %}" class="btn btn-outline-secondary">
+                            <i class="fas fa-times me-2"></i> İptal
+                        </a>
+                        <button type="submit" class="btn btn-danger">
+                            <i class="fas fa-trash me-2"></i> Koleksiyonu Sil
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %} 

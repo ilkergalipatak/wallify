@@ -10,4 +10,8 @@ python-dotenv==1.0.0
 Django==4.2.7
 django-crispy-forms==2.0
 crispy-bootstrap5==0.7
-requests==2.31.0 
+requests==2.31.0
+celery[redis]==5.3.4
+flower==2.0.1
+django-celery-beat==2.5.0
+redis==4.6.0 

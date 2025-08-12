@@ -8,11 +8,15 @@ RUN apt-get update && apt-get install -y \
     netcat-openbsd \
     && rm -rf /var/lib/apt/lists/*
 
+# Çalışma dizinini ayarla
 WORKDIR /app
 
 # Python bağımlılıklarını kopyala ve yükle
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
+
+# Celery için ek bağımlılıkları yükle
+RUN pip install --no-cache-dir celery[redis] flower django-celery-beat
 
 # Uygulama dosyalarını kopyala
 COPY . .
@@ -24,11 +28,9 @@ RUN mkdir -p cdn
 COPY wait-for-it.sh /wait-for-it.sh
 RUN chmod +x /wait-for-it.sh
 
-# Docker ortamında olduğumuzu belirt
-ENV DOCKER_ENVIRONMENT=true
+# Celery konfigürasyonu
+ENV PYTHONPATH=/app
+ENV C_FORCE_ROOT=true
 
-# Port aç
-EXPOSE 7545
-
-# Uygulama başlatma komutu
-CMD ["python", "wallify_cdn.py"] 
+# Varsayılan komut
+CMD ["celery", "-A", "tasks", "worker", "--loglevel=info"] 

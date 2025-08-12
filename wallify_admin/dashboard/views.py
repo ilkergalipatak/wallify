@@ -174,11 +174,20 @@ def collection_list(request):
                 break
             size /= 1024
         
+        # Tarihleri datetime objesine dönüştür
+        created_at = collection.get('created_at')
+        if created_at:
+            try:
+                created_at = datetime.datetime.fromisoformat(created_at.replace('Z', '+00:00'))
+            except:
+                created_at = None
+        
         collections.append({
             'name': collection_name,
             'id': collection_id,
             'file_count': file_count,
-            'total_size': readable_size
+            'total_size': readable_size,
+            'created_at': created_at
         })
     
     context = {
@@ -268,32 +277,77 @@ def collection_edit(request, pk):
 @api_login_required
 def collection_delete(request, pk):
     """Koleksiyon silme görünümü"""
-    # Koleksiyonlar artık API'den geliyor, bu yüzden pk parametresi yerine
-    # koleksiyon adını kullanacağız
-    
-    # Tüm koleksiyonları al
+    # Collection list view'ı ile aynı mantığı kullan
     collections_data = get_collections_from_api(request.session.get('api_token'))
     
-    # pk indeksine göre koleksiyon adını bul
+    # Debug log
+    logger.info(f"Collection delete - pk: {pk}, collections count: {len(collections_data)}")
+    
+    # pk indeksine göre koleksiyon bilgilerini bul
     try:
-        collection_name = collections_data[int(pk) - 1]  # pk 1'den başlıyor varsayalım
-    except (IndexError, ValueError):
+        if not collections_data or pk <= 0 or pk > len(collections_data):
+            raise IndexError("Invalid collection index")
+        
+        collection_data = collections_data[int(pk) - 1]  # pk 1'den başlıyor varsayalım
+        collection_name = collection_data.get('name', '')
+        logger.info(f"Found collection: {collection_name}, data: {collection_data}")
+        
+        if not collection_name:
+            messages.error(request, "Koleksiyon adı bulunamadı.")
+            return redirect('dashboard:collection_list')
+    except (IndexError, ValueError) as e:
+        logger.error(f"Collection not found - pk: {pk}, error: {e}")
         messages.error(request, "Koleksiyon bulunamadı.")
         return redirect('dashboard:collection_list')
     
     if request.method == 'POST':
-        # CDN klasöründen koleksiyonu sil
-        success = delete_collection(collection_name)
+        # API ile koleksiyonu sil
+        result = api_delete_collection(collection_name, request.session.get('api_token'))
         
-        if success:
+        if result.get('success', False):
             messages.success(request, f"'{collection_name}' koleksiyonu başarıyla silindi.")
             return redirect('dashboard:collection_list')
         else:
-            messages.error(request, "Koleksiyon silinirken bir hata oluştu.")
+            error_msg = result.get('error', 'Bilinmeyen hata')
+            messages.error(request, f"Koleksiyon silinirken bir hata oluştu: {error_msg}")
             return redirect('dashboard:collection_list')
     
+    # collection_data zaten yukarıda alındı, tekrar aramaya gerek yok
+    
+    # Toplam boyutu okunaklı formata dönüştür
+    total_size = collection_data.get('total_file_size', 0)
+    readable_size = "0 B"
+    for unit in ['B', 'KB', 'MB', 'GB']:
+        if total_size < 1024 or unit == 'GB':
+            readable_size = f"{total_size:.2f} {unit}"
+            break
+        total_size /= 1024
+    
+    # Tarihleri datetime objesine dönüştür
+    created_at = collection_data.get('created_at')
+    updated_at = collection_data.get('updated_at')
+    
+    if created_at:
+        try:
+            created_at = datetime.datetime.fromisoformat(created_at.replace('Z', '+00:00'))
+        except:
+            created_at = None
+    
+    if updated_at:
+        try:
+            updated_at = datetime.datetime.fromisoformat(updated_at.replace('Z', '+00:00'))
+        except:
+            updated_at = None
+    
     context = {
-        'collection': {'name': collection_name},
+        'collection': {
+            'name': collection_name,
+            'file_count': collection_data.get('file_count', 0),
+            'total_size': readable_size,
+            'created_at': created_at,
+            'updated_at': updated_at
+        },
+        'pk': pk,
     }
     
     return render(request, 'dashboard/collection_confirm_delete.html', context)
@@ -366,7 +420,7 @@ def collection_detail(request, pk):
         })
     
     # Sayfalama
-    paginator = Paginator(files_with_token, 20)  # Her sayfada 20 dosya
+    paginator = Paginator(files_with_token, 20)  # Her sayfada 50 dosya
     page_number = request.GET.get('page')
     page_obj = paginator.get_page(page_number)
     
@@ -464,7 +518,7 @@ def file_list(request):
         })
     
     # Sayfalama
-    paginator = Paginator(processed_files, 20)  # Her sayfada 20 dosya
+    paginator = Paginator(processed_files, 20)  # Her sayfada 50 dosya
     page_number = request.GET.get('page')
     page_obj = paginator.get_page(page_number)
     

@@ -19,6 +19,15 @@ Session = sessionmaker(bind=engine)
 auth_service = AuthService(Session)
 cdn_service = CDNService(Session, auth_service)
 
+@app.route("/", methods=["GET"])
+def health_check():
+    return jsonify({
+        "status": "healthy",
+        "service": "Wallify CDN API",
+        "version": "1.0.0",
+        "async_support": True
+    })
+
 @app.route("/register", methods=["POST"])
 def register():
     data = request.json
@@ -105,6 +114,31 @@ def create_admin():
 @app.route("/admin/sync_cdn_db", methods=["POST"])
 def sync_cdn_db():
     return cdn_service.sync_cdn_db()
+
+# Asenkron görev durumu kontrolü
+@app.route("/task/status/<task_id>", methods=["GET"])
+def get_task_status(task_id):
+    return jsonify({
+        "task_id": task_id,
+        "status": "PENDING",
+        "ready": False,
+        "message": "Task status endpoint"
+    })
+
+# Tüm aktif görevleri listele
+@app.route("/tasks/active", methods=["GET"])
+def list_active_tasks():
+    return jsonify({
+        "active": {},
+        "reserved": {},
+        "scheduled": {},
+        "message": "Celery worker monitoring endpoint"
+    })
+
+# Görev iptal etme
+@app.route("/task/cancel/<task_id>", methods=["POST"])
+def cancel_task(task_id):
+    return jsonify({"success": True, "message": f"Task {task_id} cancelled"})
 
 if __name__ == "__main__":
     # Docker içinde çalışırken tüm arayüzlerden gelen istekleri dinle

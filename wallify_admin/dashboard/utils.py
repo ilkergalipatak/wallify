@@ -108,6 +108,9 @@ def get_files_from_api(token=None, collection=None, page=1, per_page=100):
             url,
             params=params
         )
+        print(response.json())
+        data = response.json()
+        print("ksdlfjsldjgljsdlgjsldjglsjdlgjlsdjglsjdkgjlskdjglkjsldgjldskjg",len(data))
         
         if response.status_code == 200:
             data = response.json()
