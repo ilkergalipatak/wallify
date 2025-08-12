@@ -26,7 +26,7 @@
     </div>
     <div class="card-body">
         <form method="get" class="row g-3">
-            <div class="col-md-4">
+            <div class="col-md-3">
                 <label for="collection" class="form-label">Koleksiyon</label>
                 <select name="collection" id="collection" class="form-select">
                     <option value="">Tümü</option>
@@ -36,15 +36,24 @@
                     {% endfor %}
                 </select>
             </div>
-            <div class="col-md-4">
+            <div class="col-md-3">
                 <label for="search" class="form-label">Arama</label>
                 <input type="text" name="search" id="search" class="form-control" placeholder="Dosya adı ara..." value="{{ search_query|default:'' }}">
             </div>
-            <div class="col-md-4">
+            <div class="col-md-3">
                 <label for="sort" class="form-label">Sıralama</label>
                 <select name="sort" id="sort" class="form-select">
                     <option value="name" {% if sort_by == 'name' %}selected{% endif %}>İsim (A-Z)</option>
                     <option value="-name" {% if sort_by == '-name' %}selected{% endif %}>İsim (Z-A)</option>
+                </select>
+            </div>
+            <div class="col-md-3">
+                <label for="per_page" class="form-label">Sayfa başına</label>
+                <select name="per_page" id="per_page" class="form-select">
+                    <option value="20" {% if per_page == 20 %}selected{% endif %}>20</option>
+                    <option value="50" {% if per_page == 50 %}selected{% endif %}>50</option>
+                    <option value="100" {% if per_page == 100 %}selected{% endif %}>100</option>
+                    <option value="200" {% if per_page == 200 %}selected{% endif %}>200</option>
                 </select>
             </div>
             <div class="col-12">
@@ -64,13 +73,34 @@
         <div class="card-header">
             <div class="d-flex justify-content-between align-items-center">
                 <h5 class="card-title mb-0">Dosyalar ({{ files.paginator.count }})</h5>
-                <div class="btn-group">
+                <div class="d-flex align-items-center" style="gap: 12px;">
+                    <form method="get" class="d-flex align-items-center" style="gap: 8px;">
+                        <label for="per_page" class="form-label mb-0 small text-muted">Sayfa başına:</label>
+                        <select id="per_page" name="per_page" class="form-select form-select-sm" style="width: auto;">
+                            <option value="20" {% if per_page == 20 %}selected{% endif %}>20</option>
+                            <option value="50" {% if per_page == 50 %}selected{% endif %}>50</option>
+                            <option value="100" {% if per_page == 100 %}selected{% endif %}>100</option>
+                            <option value="200" {% if per_page == 200 %}selected{% endif %}>200</option>
+                        </select>
+                        {% if files.number %}
+                            <input type="hidden" name="page" value="{{ files.number }}"/>
+                        {% endif %}
+                        {% if collection_filter %}
+                            <input type="hidden" name="collection" value="{{ collection_filter }}"/>
+                        {% endif %}
+                        {% if search_query %}
+                            <input type="hidden" name="search" value="{{ search_query }}"/>
+                        {% endif %}
+                        <button type="submit" class="btn btn-sm btn-outline-secondary">Uygula</button>
+                    </form>
+                    <div class="btn-group">
                     <button type="button" class="btn btn-sm btn-outline-secondary" id="viewGrid">
                         <i class="fas fa-th"></i>
                     </button>
                     <button type="button" class="btn btn-sm btn-outline-secondary" id="viewList">
                         <i class="fas fa-list"></i>
-                    </button>
+                        </button>
+                    </div>
                 </div>
             </div>
         </div>
@@ -80,16 +110,16 @@
                 {% for file in files %}
                 <div class="col-md-3 mb-4">
                     <div class="card h-100">
-                        <div class="card-img-top text-center p-2" style="height: 150px; display: flex; align-items: center; justify-content: center;">
+                        <div class="card-img-top text-center p-2" style="height: 220px; display: flex; align-items: center; justify-content: center;">
                             {% if file.is_image %}
-                                <img src="{{ file.url }}" class="img-fluid" style="max-height: 140px;" alt="{{ file.name }}">
+                                <img src="{{ file.url }}" class="img-fluid open-image" data-image-url="{{ file.url }}" data-image-name="{{ file.name }}" style="max-height: 210px; object-fit: contain; cursor: zoom-in;" alt="{{ file.name }}">
                             {% else %}
                                 <i class="fas fa-file fa-5x text-muted"></i>
                             {% endif %}
                         </div>
                         <div class="card-body">
-                            <h6 class="card-title text-truncate" title="{{ file.name }}">{{ file.name }}</h6>
-                            <p class="card-text small text-muted">{{ file.size }}</p>
+                            <h6 class="card-title text-truncate text-center" title="{{ file.name }}">{{ file.name }}</h6>
+                            <p class="card-text small text-muted text-center">{{ file.size }}</p>
                             <p class="card-text small text-muted">
                                 {% if file.collection %}
                                     <i class="fas fa-folder me-1"></i> {{ file.collection }}
@@ -132,7 +162,7 @@
                         <tr>
                             <td>
                                 {% if file.is_image %}
-                                    <img src="{{ file.url }}" class="thumbnail" width="50" alt="{{ file.name }}">
+                                    <img src="{{ file.url }}" class="thumbnail open-image" data-image-url="{{ file.url }}" data-image-name="{{ file.name }}" width="64" alt="{{ file.name }}" style="cursor: zoom-in;">
                                 {% else %}
                                     <i class="fas fa-file fa-2x text-muted"></i>
                                 {% endif %}
@@ -166,12 +196,12 @@
                     <ul class="pagination">
                         {% if files.has_previous %}
                             <li class="page-item">
-                                <a class="page-link" href="?page=1{% if collection_filter %}&collection={{ collection_filter }}{% endif %}{% if search_query %}&search={{ search_query }}{% endif %}{% if sort_by %}&sort={{ sort_by }}{% endif %}" aria-label="İlk">
+                                <a class="page-link" href="?page=1{% if collection_filter %}&collection={{ collection_filter }}{% endif %}{% if search_query %}&search={{ search_query }}{% endif %}{% if sort_by %}&sort={{ sort_by }}{% endif %}{% if per_page %}&per_page={{ per_page }}{% endif %}" aria-label="İlk">
                                     <span aria-hidden="true">&laquo;&laquo;</span>
                                 </a>
                             </li>
                             <li class="page-item">
-                                <a class="page-link" href="?page={{ files.previous_page_number }}{% if collection_filter %}&collection={{ collection_filter }}{% endif %}{% if search_query %}&search={{ search_query }}{% endif %}{% if sort_by %}&sort={{ sort_by }}{% endif %}" aria-label="Önceki">
+                                <a class="page-link" href="?page={{ files.previous_page_number }}{% if collection_filter %}&collection={{ collection_filter }}{% endif %}{% if search_query %}&search={{ search_query }}{% endif %}{% if sort_by %}&sort={{ sort_by }}{% endif %}{% if per_page %}&per_page={{ per_page }}{% endif %}" aria-label="Önceki">
                                     <span aria-hidden="true">&laquo;</span>
                                 </a>
                             </li>
@@ -179,20 +209,20 @@
                         
                         {% for num in files.paginator.page_range %}
                             {% if files.number == num %}
-                                <li class="page-item active"><a class="page-link" href="?page={{ num }}{% if collection_filter %}&collection={{ collection_filter }}{% endif %}{% if search_query %}&search={{ search_query }}{% endif %}{% if sort_by %}&sort={{ sort_by }}{% endif %}">{{ num }}</a></li>
+                                <li class="page-item active"><a class="page-link" href="?page={{ num }}{% if collection_filter %}&collection={{ collection_filter }}{% endif %}{% if search_query %}&search={{ search_query }}{% endif %}{% if sort_by %}&sort={{ sort_by }}{% endif %}{% if per_page %}&per_page={{ per_page }}{% endif %}">{{ num }}</a></li>
                             {% elif num > files.number|add:'-3' and num < files.number|add:'3' %}
-                                <li class="page-item"><a class="page-link" href="?page={{ num }}{% if collection_filter %}&collection={{ collection_filter }}{% endif %}{% if search_query %}&search={{ search_query }}{% endif %}{% if sort_by %}&sort={{ sort_by }}{% endif %}">{{ num }}</a></li>
+                                <li class="page-item"><a class="page-link" href="?page={{ num }}{% if collection_filter %}&collection={{ collection_filter }}{% endif %}{% if search_query %}&search={{ search_query }}{% endif %}{% if sort_by %}&sort={{ sort_by }}{% endif %}{% if per_page %}&per_page={{ per_page }}{% endif %}">{{ num }}</a></li>
                             {% endif %}
                         {% endfor %}
                         
                         {% if files.has_next %}
                             <li class="page-item">
-                                <a class="page-link" href="?page={{ files.next_page_number }}{% if collection_filter %}&collection={{ collection_filter }}{% endif %}{% if search_query %}&search={{ search_query }}{% endif %}{% if sort_by %}&sort={{ sort_by }}{% endif %}" aria-label="Sonraki">
+                                <a class="page-link" href="?page={{ files.next_page_number }}{% if collection_filter %}&collection={{ collection_filter }}{% endif %}{% if search_query %}&search={{ search_query }}{% endif %}{% if sort_by %}&sort={{ sort_by }}{% endif %}{% if per_page %}&per_page={{ per_page }}{% endif %}" aria-label="Sonraki">
                                     <span aria-hidden="true">&raquo;</span>
                                 </a>
                             </li>
                             <li class="page-item">
-                                <a class="page-link" href="?page={{ files.paginator.num_pages }}{% if collection_filter %}&collection={{ collection_filter }}{% endif %}{% if search_query %}&search={{ search_query }}{% endif %}{% if sort_by %}&sort={{ sort_by }}{% endif %}" aria-label="Son">
+                                <a class="page-link" href="?page={{ files.paginator.num_pages }}{% if collection_filter %}&collection={{ collection_filter }}{% endif %}{% if search_query %}&search={{ search_query }}{% endif %}{% if sort_by %}&sort={{ sort_by }}{% endif %}{% if per_page %}&per_page={{ per_page }}{% endif %}" aria-label="Son">
                                     <span aria-hidden="true">&raquo;&raquo;</span>
                                 </a>
                             </li>
@@ -316,6 +346,70 @@
                 }
             }
             return cookieValue;
+        }
+
+        // Modal galeri desteği (grid ve liste için aynı modalı kullan)
+        // Koleksiyon detayındaki modal ile aynı ID'yi kullanacağız
+        const sharedModalEl = document.getElementById('imageModal');
+        let imageModal;
+        if (sharedModalEl) {
+            imageModal = new bootstrap.Modal(sharedModalEl);
+        } else {
+            // Modal yoksa dinamik olarak ekleyelim
+            const modalHtml = `
+            <div class="modal fade" id="imageModal" tabindex="-1" aria-labelledby="imageModalLabel" aria-hidden="true">
+              <div class="modal-dialog modal-lg modal-dialog-centered">
+                <div class="modal-content">
+                  <div class="modal-header">
+                    <h5 class="modal-title" id="imageModalLabel">Resim Görüntüle</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                  </div>
+                  <div class="modal-body text-center">
+                    <img id="modalImage" src="" class="img-fluid" alt="Resim">
+                  </div>
+                  <div class="modal-footer d-flex justify-content-between">
+                    <div>
+                      <button type="button" class="btn btn-outline-secondary" id="prevImage"><i class="fas fa-arrow-left me-2"></i>Önceki</button>
+                      <button type="button" class="btn btn-outline-secondary" id="nextImage">Sonraki<i class="fas fa-arrow-right ms-2"></i></button>
+                    </div>
+                    <div>
+                      <a href="" id="downloadLink" class="btn btn-primary" download><i class="fas fa-download me-2"></i>İndir</a>
+                      <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Kapat</button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>`;
+            document.body.insertAdjacentHTML('beforeend', modalHtml);
+            imageModal = new bootstrap.Modal(document.getElementById('imageModal'));
+        }
+
+        const modalImage = document.getElementById('modalImage');
+        const modalTitle = document.getElementById('imageModalLabel');
+        const downloadLink = document.getElementById('downloadLink');
+        const prevBtn = document.getElementById('prevImage');
+        const nextBtn = document.getElementById('nextImage');
+        const thumbs = Array.from(document.querySelectorAll('.open-image'));
+        const gallery = thumbs.map(img => ({ url: img.getAttribute('data-image-url'), name: img.getAttribute('data-image-name') }));
+        let currentIndex = 0;
+
+        function openAt(index) {
+            if (index < 0 || index >= gallery.length) return;
+            currentIndex = index;
+            const { url, name } = gallery[currentIndex];
+            modalImage.src = url;
+            modalTitle.textContent = name;
+            downloadLink.href = url;
+            downloadLink.download = name;
+            imageModal.show();
+        }
+
+        thumbs.forEach((img, idx) => {
+            img.addEventListener('click', () => openAt(idx));
+        });
+        if (prevBtn && nextBtn) {
+            prevBtn.addEventListener('click', () => openAt((currentIndex - 1 + gallery.length) % gallery.length));
+            nextBtn.addEventListener('click', () => openAt((currentIndex + 1) % gallery.length));
         }
     });
 </script>

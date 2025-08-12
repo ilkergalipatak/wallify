@@ -7,6 +7,7 @@ from pathlib import Path
 import time
 from functools import lru_cache
 import re
+from urllib.parse import urlparse, urlunparse
 
 logger = logging.getLogger(__name__)
 
@@ -50,18 +51,42 @@ def get_auth_header(token):
 
 def convert_docker_url_to_browser_url(url):
     """Docker içindeki URL'yi tarayıcıda çalışacak şekilde dönüştürür"""
-    # Docker ve tarayıcı için CDN API URL'lerini al
-    docker_cdn_api_url = os.environ.get('DOCKER_CDN_API_URL', 'http://flask:7545')
-    browser_cdn_api_url = os.environ.get('BROWSER_CDN_API_URL', 'http://localhost:7545')
-    
-    # Docker URL'sini tarayıcı URL'sine dönüştür
-    if docker_cdn_api_url in url:
-        url = url.replace(docker_cdn_api_url, browser_cdn_api_url)
-    
-    # Domain adlarını da kontrol et ve değiştir
-    if 'flask:7545' in url:
-        url = url.replace('flask:7545', 'cdn.craftergarage.com')
-    
+    if not url:
+        return url
+
+    docker_cdn_api_url = os.environ.get('DOCKER_CDN_API_URL', 'http://flask:7545').rstrip('/')
+    browser_cdn_api_url = os.environ.get('BROWSER_CDN_API_URL', 'http://localhost:7545').rstrip('/')
+
+    # Önce doğrudan prefix değişimi dene
+    if url.startswith(docker_cdn_api_url):
+        return browser_cdn_api_url + url[len(docker_cdn_api_url):]
+
+    # Aksi halde netloc bazlı dönüştürme yap
+    try:
+        original = urlparse(url)
+        docker_parsed = urlparse(docker_cdn_api_url)
+        browser_parsed = urlparse(browser_cdn_api_url)
+
+        docker_hosts = {
+            docker_parsed.netloc,
+            'flask:7545',
+            'localhost:7545',
+            '127.0.0.1:7545',
+        }
+
+        if original.netloc in docker_hosts:
+            return urlunparse((
+                browser_parsed.scheme,
+                browser_parsed.netloc,
+                original.path,
+                original.params,
+                original.query,
+                original.fragment,
+            ))
+    except Exception:
+        # Sessizce orijinali döndür
+        return url
+
     return url
 
 @cache_result(timeout=60)
@@ -438,7 +463,7 @@ def api_delete_collection(collection_name, token=None):
     try:
         if not token:
             logger.error("API token bulunamadı")
-            return False
+            return {"success": False, "error": "API token bulunamadı"}
         
         url = f"{settings.CDN_API_URL}/delete_collection"
         
@@ -452,13 +477,20 @@ def api_delete_collection(collection_name, token=None):
         if response.status_code == 200:
             # Önbelleği temizle
             clear_cache()
-            return True
+            # API başarılıysa standart bir başarı dict'i dön
+            try:
+                data = response.json()
+                # API success bayrağı yoksa bile our contract: success True
+                data.setdefault('success', True)
+                return data
+            except Exception:
+                return {"success": True}
         else:
             logger.error(f"Koleksiyon silinemedi: {response.text}")
-            return False
+            return {"success": False, "error": response.text}
     except Exception as e:
         logger.error(f"Koleksiyon silinemedi: {str(e)}")
-        return False
+        return {"success": False, "error": str(e)}
 
 def api_update_collection(old_name, new_name, token=None):
     """CDN API kullanarak koleksiyon güncelleme"""

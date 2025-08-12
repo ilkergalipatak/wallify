@@ -924,6 +924,19 @@ class CDNService:
     def sync_cdn_db(self):
         """CDN klasörü ile veritabanı arasında senkronizasyon (sadece admin kullanıcılar)"""
         token = request.args.get("token")
+        # Senkronizasyon tercihi: 'fs' (varsayılan) veya 'db'
+        prefer = request.args.get("prefer")
+        try:
+            body_json = request.get_json(silent=True) or {}
+        except Exception:
+            body_json = {}
+        if not prefer:
+            prefer = body_json.get("prefer", "fs")
+        # Eksik olanları karşı taraftan sil (tehlikeli işlem). Varsayılan: False
+        delete_missing = request.args.get("delete_missing")
+        if delete_missing is None:
+            delete_missing = body_json.get("delete_missing", False)
+        delete_missing = True if str(delete_missing).lower() in ["1", "true", "yes"] else False
         if not token:
             token = request.headers.get("Authorization")
             if not token:
@@ -942,8 +955,8 @@ class CDNService:
                 from models import File, Collection
                 import os
                 from natsort import natsorted
-                
-                # 1. Dosya sisteminden koleksiyon ve dosyaları tara
+
+                # 1. Dosya sistemini tara
                 cdn_root = self.cdn_folder
                 fs_collections = set()
                 fs_files = dict()  # {collection_name: set(file_name)}
@@ -955,20 +968,148 @@ class CDNService:
                             if file_entry.is_file():
                                 fs_files[entry.name].add(file_entry.name)
                     elif entry.is_file():
-                        # Ana dizindeki dosyalar (koleksiyonsuz)
                         fs_collections.add(None)
                         fs_files.setdefault(None, set()).add(entry.name)
-                
-                # 2. Veritabanından koleksiyon ve dosyaları çek
+
+                # 2. Veritabanını tara
                 db_collections = {c.name: c for c in session.query(Collection).all()}
                 db_files = dict()  # {collection_name: {file_name: File}}
                 for c in db_collections.values():
                     db_files[c.name] = {f.file_name: f for f in c.files}
-                # Koleksiyonsuz dosyalar
                 db_files[None] = {f.file_name: f for f in session.query(File).filter(File.collection_id == None).all()}
-                
-                # 3. Eksik koleksiyonları ekle
-                added_collections = []
+
+                # Çıktı metrikleri
+                added_collections, removed_collections = [], []
+                added_files, removed_files = [], []
+                fs_deleted_collections, fs_deleted_files = [], []
+                fs_created_collections = []
+                renamed_collections_fs = []  # (old->new) FS üzerinde yapılan yeniden adlar
+
+                if prefer == "db":
+                    # 3A. DB -> FS senkron (tercih DB). Olası yeniden adlandırmaları tespit edip FS'de uygula
+                    db_only = [c for c in db_collections.keys() if c is not None and c not in fs_collections]
+                    fs_only = [c for c in fs_collections if c is not None and c not in db_collections]
+
+                    def jaccard(a, b):
+                        if not a and not b:
+                            return 1.0
+                        inter = len(a.intersection(b))
+                        union = len(a.union(b)) or 1
+                        return inter / union
+
+                    for new_name in list(db_only):
+                        best_old, best_score = None, 0.0
+                        target_db_set = set(db_files.get(new_name, {}).keys())
+                        for old_name in fs_only:
+                            score = jaccard(target_db_set, fs_files.get(old_name, set()))
+                            if score > best_score:
+                                best_old, best_score = old_name, score
+                        if best_old and best_score >= 0.8:
+                            # FS'de klasörü DB'deki yeni isme taşı
+                            src = os.path.join(cdn_root, best_old)
+                            dst = os.path.join(cdn_root, new_name)
+                            if os.path.exists(src) and not os.path.exists(dst):
+                                os.rename(src, dst)
+                                renamed_collections_fs.append({"from": best_old, "to": new_name})
+                                # FS state'i güncelle
+                                fs_collections.discard(best_old)
+                                fs_collections.add(new_name)
+                                fs_files[new_name] = fs_files.pop(best_old, set())
+                                # fs_only listesini güncelle
+                                fs_only.remove(best_old)
+                                if new_name in db_only:
+                                    db_only.remove(new_name)
+
+                    # 3B. DB'de olup FS'de olmayan koleksiyon klasörlerini oluştur
+                    for cname in db_collections.keys():
+                        if cname is not None and cname not in fs_collections:
+                            os.makedirs(os.path.join(cdn_root, cname), exist_ok=True)
+                            fs_collections.add(cname)
+                            fs_files[cname] = set()
+                            fs_created_collections.append(cname)
+
+                    # 3C. FS'de olup DB'de olmayanları isteğe bağlı sil
+                    if delete_missing:
+                        for cname in list(fs_collections):
+                            if cname is not None and cname not in db_collections:
+                                shutil.rmtree(os.path.join(cdn_root, cname), ignore_errors=True)
+                                fs_collections.discard(cname)
+                                fs_files.pop(cname, None)
+                                fs_deleted_collections.append(cname)
+
+                    # 3D. Dosyalar: DB'yi kaynak alıp FS'de olmayanları sil (opsiyonel)
+                    if delete_missing:
+                        for cname in fs_collections:
+                            fs_set = fs_files.get(cname, set())
+                            db_set = set(db_files.get(cname, {}).keys())
+                            for fname in list(fs_set):
+                                if fname not in db_set:
+                                    # FS'deki fazla dosyayı sil
+                                    abs_path = os.path.join(cdn_root, cname, fname) if cname else os.path.join(cdn_root, fname)
+                                    try:
+                                        os.remove(abs_path)
+                                        fs_deleted_files.append((cname, fname))
+                                        fs_set.discard(fname)
+                                    except FileNotFoundError:
+                                        pass
+
+                    # DB tarafa ekleme/çıkarma yok; sadece istatistik güncelle
+                    for c in db_collections.values():
+                        c.update_stats(session)
+                    session.commit()
+                    return jsonify({
+                        "status": "ok",
+                        "prefer": "db",
+                        "fs_created_collections": fs_created_collections,
+                        "fs_deleted_collections": fs_deleted_collections,
+                        "fs_deleted_files": [
+                            f"{c}/{f}" if c else f for (c, f) in fs_deleted_files
+                        ],
+                        "renamed_collections_fs": renamed_collections_fs,
+                    })
+
+                # 3'. Varsayılan: FS -> DB (mevcut davranış)
+                # Olası klasör yeniden adlandırmalarını tespit et ve DB'de rename uygula
+                try:
+                    db_only = [c for c in db_collections.keys() if c is not None and c not in fs_collections]
+                    fs_only = [c for c in fs_collections if c is not None and c not in db_collections]
+
+                    def jaccard(a, b):
+                        if not a and not b:
+                            return 1.0
+                        inter = len(a.intersection(b))
+                        union = len(a.union(b)) or 1
+                        return inter / union
+
+                    renamed_collections_db = []
+                    for old_name in list(db_only):
+                        best_new, best_score = None, 0.0
+                        source_db_set = set(db_files.get(old_name, {}).keys())
+                        for new_name in fs_only:
+                            score = jaccard(source_db_set, fs_files.get(new_name, set()))
+                            if score > best_score:
+                                best_new, best_score = new_name, score
+                        if best_new and best_score >= 0.8 and best_new not in db_collections:
+                            # DB kayıtlarını eski isimden yeni isme taşı (rename)
+                            col = db_collections[old_name]
+                            col.name = best_new
+                            # File.file_path alanlarını güncelle
+                            for f in col.files:
+                                if f.file_path.startswith(f"{old_name}/"):
+                                    f.file_path = f"{best_new}/" + f.file_path[len(old_name) + 1:]
+                                # file_name aynı kalır
+                            # Mappingleri güncelle
+                            db_collections[best_new] = col
+                            db_collections.pop(old_name, None)
+                            db_files[best_new] = db_files.pop(old_name, {})
+                            # listeleri güncelle
+                            fs_only.remove(best_new)
+                            if old_name in db_only:
+                                db_only.remove(old_name)
+                            renamed_collections_db.append({"from": old_name, "to": best_new})
+                except Exception:
+                    renamed_collections_db = []
+                # Eksik koleksiyonları DB'ye ekle
                 for cname in fs_collections:
                     if cname is not None and cname not in db_collections:
                         new_c = Collection(name=cname)
@@ -977,26 +1118,22 @@ class CDNService:
                         db_collections[cname] = new_c
                         db_files[cname] = {}
                         added_collections.append(cname)
-                
-                # 4. Fazla koleksiyonları sil
-                removed_collections = []
+
+                # DB'de olup FS'de olmayan koleksiyonları DB'den sil
                 for cname in list(db_collections.keys()):
                     if cname is not None and cname not in fs_collections:
                         session.delete(db_collections[cname])
                         removed_collections.append(cname)
                         db_collections.pop(cname)
                         db_files.pop(cname, None)
-                
-                # 5. Dosya ekle/sil işlemleri
-                added_files = []
-                removed_files = []
+
+                # Dosyaları ekle/sil (FS kaynak)
                 for cname in fs_collections:
                     fs_file_set = fs_files.get(cname, set())
                     db_file_dict = db_files.get(cname, {})
-                    # Eksik dosyaları ekle
+                    # Eksik dosyaları DB'ye ekle
                     for fname in fs_file_set:
                         if fname not in db_file_dict:
-                            # Dosya yolu ve boyutu
                             if cname:
                                 rel_path = f"{cname}/{fname}"
                                 abs_path = os.path.join(cdn_root, cname, fname)
@@ -1016,22 +1153,24 @@ class CDNService:
                             )
                             session.add(new_file)
                             added_files.append(rel_path)
-                    # Fazla dosyaları sil
+                    # DB'de olup FS'de olmayan dosyaları DB'den sil
                     for fname in list(db_file_dict.keys()):
                         if fname not in fs_file_set:
                             session.delete(db_file_dict[fname])
                             removed_files.append(f"{cname}/{fname}" if cname else fname)
-                
-                # 6. Koleksiyon istatistiklerini güncelle
+
+                # İstatistik güncelle ve dön
                 for c in db_collections.values():
                     c.update_stats(session)
                 session.commit()
                 return jsonify({
+                    "status": "ok",
+                    "prefer": "fs",
+                    "renamed_collections_db": renamed_collections_db,
                     "added_collections": added_collections,
                     "removed_collections": removed_collections,
                     "added_files": added_files,
                     "removed_files": removed_files,
-                    "status": "ok"
                 })
             finally:
                 session.close()

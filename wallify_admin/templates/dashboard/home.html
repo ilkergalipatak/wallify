@@ -97,7 +97,7 @@
             <div class="card-body p-0">
                 <div class="list-group list-group-flush">
                     {% for collection in collections %}
-                        <a href="{% url 'dashboard:collection_detail' forloop.counter %}" class="list-group-item list-group-item-action d-flex justify-content-between align-items-center">
+                        <a href="{% url 'dashboard:collection_detail' collection.idx|default:forloop.counter %}" class="list-group-item list-group-item-action d-flex justify-content-between align-items-center">
                             <div>
                                 <i class="fas fa-folder me-2 text-primary"></i>
                                 {{ collection.name }}
@@ -164,12 +164,18 @@
         var btn = this;
         btn.disabled = true;
         btn.innerHTML = '<i class="fas fa-sync fa-spin me-2"></i> Senkronize Ediliyor...';
+        // Tercih yönünü ve silme davranışını kullanıcıdan al
+        const prefer = window.prompt('Senkronizasyon yönünü seçin: fs (Varsayılan: Dosya Sistemi -> Veritabanı) veya db (Veritabanı -> Dosya Sistemi)', 'fs') || 'fs';
+        const deleteMissing = window.confirm('Karşı tarafta bulunmayan öğeleri de silmek ister misiniz? Bu işlem geri alınamaz!') ? true : false;
+
         fetch('{% url "dashboard:sync_with_cdn" %}', {
             method: 'POST',
             headers: {
                 'X-CSRFToken': '{{ csrf_token }}',
                 'Accept': 'application/json',
+                'Content-Type': 'application/json',
             },
+            body: JSON.stringify({ prefer: prefer, delete_missing: deleteMissing })
         })
         .then(response => response.json())
         .then(data => {
@@ -177,7 +183,20 @@
             btn.innerHTML = '<i class="fas fa-sync-alt me-2"></i> CDN ile Senkronize Et';
             let resultDiv = document.getElementById('sync-cdn-result');
             if (data.status === 'ok') {
-                resultDiv.innerHTML = '<div class="alert alert-success">Senkronizasyon başarılı!</div>';
+                const details = [];
+                if (data.prefer === 'fs') {
+                    if (data.added_collections && data.added_collections.length) details.push('Eklenen koleksiyonlar: ' + data.added_collections.join(', '));
+                    if (data.removed_collections && data.removed_collections.length) details.push('Silinen koleksiyonlar: ' + data.removed_collections.join(', '));
+                    if (data.added_files && data.added_files.length) details.push('Eklenen dosyalar: ' + data.added_files.length);
+                    if (data.removed_files && data.removed_files.length) details.push('Silinen dosyalar: ' + data.removed_files.length);
+                } else if (data.prefer === 'db') {
+                    if (data.fs_created_collections && data.fs_created_collections.length) details.push('FS’de oluşturulan koleksiyonlar: ' + data.fs_created_collections.join(', '));
+                    if (data.fs_deleted_collections && data.fs_deleted_collections.length) details.push('FS’den silinen koleksiyonlar: ' + data.fs_deleted_collections.join(', '));
+                    if (data.fs_deleted_files && data.fs_deleted_files.length) details.push('FS’den silinen dosyalar: ' + data.fs_deleted_files.length);
+                    if (data.renamed_collections_fs && data.renamed_collections_fs.length) details.push('Yeniden adlandırılan klasörler: ' + data.renamed_collections_fs.map(r => r.from + ' 812 ' + r.to).join(', '));
+                }
+                const message = 'Senkronizasyon başarılı!' + (details.length ? '<br/>' + details.join('<br/>') : '');
+                resultDiv.innerHTML = '<div class="alert alert-success">' + message + '</div>';
             } else {
                 resultDiv.innerHTML = '<div class="alert alert-danger">Hata: ' + (data.message || 'Bilinmeyen hata') + '</div>';
             }

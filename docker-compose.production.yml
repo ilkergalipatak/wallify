@@ -1,0 +1,86 @@
+version: '3.8'
+
+services:
+  # PostgreSQL veritabanı
+  db:
+    image: postgres:17
+    environment:
+      POSTGRES_USER: ${DB_USER:-postgres}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+      POSTGRES_DB: ${DB_NAME:-wallify}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    env_file:
+      - docker.production.env
+    networks:
+      - app_network  # Özel ağına bağlanıyor
+
+  # Flask API (CDN)
+  flask:
+    build:
+      context: .
+      dockerfile: Dockerfile.flask
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      - DB_HOST=db
+      - DOCKER_ENVIRONMENT=true
+    env_file:
+      - docker.production.env
+    volumes:
+      - ./cdn:/app/cdn
+    ports:
+      - "7545:7545"
+    command: >
+      sh -c "wait-for-it.sh db:5432 -t 60 --
+             python wallify_cdn.py"
+    restart: unless-stopped
+    networks:
+      - app_network  # Özel ağına bağlanıyor
+
+  # Django Admin Panel
+  django:
+    build:
+      context: .
+      dockerfile: Dockerfile.django
+    depends_on:
+      - flask
+    env_file:
+      - docker.production.env
+    environment:
+      - CDN_API_URL=http://flask:7545
+      - DOCKER_CDN_API_URL=http://flask:7545
+      - BROWSER_CDN_API_URL=https://cdn.craftergarage.com
+      - CDN_PUBLIC_URL=https://cdn.craftergarage.com
+      - DB_HOST=db
+      - DOCKER_ENVIRONMENT=true
+      - DJANGO_ALLOWED_HOSTS=localhost,127.0.0.1,django,flask,admin.craftergarage.com,cdn.craftergarage.com
+    volumes:
+      - ./cdn:/app/cdn
+      - ./wallify_admin:/app/wallify_admin
+    ports:
+      - "8000:8000"
+    command: >
+      sh -c "wait-for-it.sh flask:7545 -t 60 --
+             cd /app/wallify_admin &&
+             python manage.py makemigrations &&
+             python manage.py migrate &&
+             python manage.py runserver 0.0.0.0:8000"
+    restart: unless-stopped
+    networks:
+      - app_network  # Özel ağına bağlanıyor
+
+volumes:
+  postgres_data:
+
+networks:
+  app_network:  # Özel ağ tanımlandı
+    driver: bridge  # Bridge ağı kullanılıyor 

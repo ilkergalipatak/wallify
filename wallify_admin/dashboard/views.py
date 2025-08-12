@@ -137,12 +137,25 @@ def home(request):
             else:
                 file['url'] += f"?token={token}"
 
+    # Ana sayfada listelenecek koleksiyonlar (top_collections) için
+    # detay sayfasına doğru yönlenebilmesi adına index eşlemesi yap
+    try:
+        api_collections = get_collections_from_api(request.session.get('api_token'))
+    except Exception:
+        api_collections = []
+    name_to_index = {c.get('name'): i + 1 for i, c in enumerate(api_collections) if c.get('name')}
+
+    top_collections = stats.get('top_collections', []) or []
+    for c in top_collections:
+        if isinstance(c, dict):
+            c['idx'] = name_to_index.get(c.get('name'))
+
     context = {
         'collection_count': stats.get('collection_count', 0),
         'file_count': stats.get('total_files', 0),
         'total_size': total_size_str,
         'recent_files': recent_files,
-        'collections': stats.get('top_collections', []),
+        'collections': top_collections,
         'username': request.session.get('username'),
     }
     return render(request, 'dashboard/home.html', context)
@@ -348,6 +361,7 @@ def collection_delete(request, pk):
             'updated_at': updated_at
         },
         'pk': pk,
+        'username': request.session.get('username'),
     }
     
     return render(request, 'dashboard/collection_confirm_delete.html', context)
@@ -384,14 +398,27 @@ def collection_detail(request, pk):
     collection_name = collection_data.get('name')
     collection_id = collection_data.get('id')
     
-    # Koleksiyona ait dosyaları API'den al
-    files_data = get_files_from_api(token=request.session.get('api_token'), collection=collection_name)
-    files = files_data.get('files', [])
+    # Koleksiyona ait TÜM dosyaları API'den topla (sayfalar halinde)
+    all_files = []
+    api_page = 1
+    api_per_page = 200  # Daha az istek için sayfa başına yüksek değer
+    while True:
+        files_data = get_files_from_api(
+            token=request.session.get('api_token'),
+            collection=collection_name,
+            page=api_page,
+            per_page=api_per_page,
+        )
+        page_files = files_data.get('files', [])
+        all_files.extend(page_files)
+        if not files_data or not files_data.get('has_next'):
+            break
+        api_page += 1
     
     # Dosya URL'lerine token ekle
     token = request.session.get('api_token')
     files_with_token = []
-    for file_info in files:
+    for file_info in all_files:
         # Docker içindeki URL'yi tarayıcıda çalışacak şekilde dönüştür
         file_url = file_info.get('url', '')
         browser_url = convert_docker_url_to_browser_url(file_url)
@@ -419,8 +446,18 @@ def collection_detail(request, pk):
             'is_image': is_image
         })
     
-    # Sayfalama
-    paginator = Paginator(files_with_token, 20)  # Her sayfada 50 dosya
+    # Kullanıcı tercihine göre sayfa başına gösterim
+    try:
+        per_page = int(request.GET.get('per_page') or request.session.get('per_page', 50))
+    except (TypeError, ValueError):
+        per_page = 50
+    if per_page not in [20, 50, 100, 200]:
+        per_page = 50
+    # Tercihi session'da sakla
+    request.session['per_page'] = per_page
+
+    # Sayfalama (Django tarafı)
+    paginator = Paginator(files_with_token, per_page)
     page_number = request.GET.get('page')
     page_obj = paginator.get_page(page_number)
     
@@ -461,6 +498,7 @@ def collection_detail(request, pk):
         'files': page_obj,
         'pk': pk,  # pk değişkenini context'e ekle
         'username': request.session.get('username'),
+        'per_page': per_page,
     }
     
     return render(request, 'dashboard/collection_detail.html', context)
@@ -472,9 +510,31 @@ def file_list(request):
     collection_filter = request.GET.get('collection')
     search_query = request.GET.get('search')
     
-    # API'den dosyaları al
-    files_data = get_files_from_api(token=request.session.get('api_token'), collection=collection_filter)
-    files = files_data.get('files', [])
+    # Kullanıcı tercihine göre sayfa başına gösterim
+    try:
+        per_page = int(request.GET.get('per_page') or request.session.get('per_page', 50))
+    except (TypeError, ValueError):
+        per_page = 50
+    if per_page not in [20, 50, 100, 200]:
+        per_page = 50
+    # Tercihi session'da sakla
+    request.session['per_page'] = per_page
+
+    # API'den dosyaları al (koleksiyon filtresine göre). Tüm sayfaları topla
+    files = []
+    api_page = 1
+    while True:
+        files_data = get_files_from_api(
+            token=request.session.get('api_token'),
+            collection=collection_filter if collection_filter not in [None, '', 'none'] else None,
+            page=api_page,
+            per_page=200,
+        )
+        page_files = files_data.get('files', [])
+        files.extend(page_files)
+        if not files_data or not files_data.get('has_next'):
+            break
+        api_page += 1
     
     # Dosya URL'lerini işle ve gerekli formata dönüştür
     token = request.session.get('api_token')
@@ -518,7 +578,7 @@ def file_list(request):
         })
     
     # Sayfalama
-    paginator = Paginator(processed_files, 20)  # Her sayfada 50 dosya
+    paginator = Paginator(processed_files, per_page)
     page_number = request.GET.get('page')
     page_obj = paginator.get_page(page_number)
     
@@ -530,6 +590,7 @@ def file_list(request):
         'collections': collections,
         'current_collection': collection_filter,
         'search_query': search_query,
+        'per_page': per_page,
         'username': request.session.get('username'),
     }
     
@@ -788,10 +849,23 @@ def sync_with_cdn(request):
         api_token = request.session.get('api_token')
         api_url = f"{settings.CDN_API_URL}/admin/sync_cdn_db"
         try:
-            response = requests.post(api_url, headers={
-                'Authorization': api_token,
-                'Accept': 'application/json',
-            })
+            # İsteğe bağlı yön ve silme parametrelerini istemciden al
+            try:
+                payload = json.loads(request.body.decode('utf-8')) if request.body else {}
+            except Exception:
+                payload = {}
+            response = requests.post(
+                api_url,
+                headers={
+                    'Authorization': api_token,
+                    'Accept': 'application/json',
+                    'Content-Type': 'application/json',
+                },
+                json={
+                    'prefer': payload.get('prefer', 'fs'),
+                    'delete_missing': payload.get('delete_missing', False)
+                }
+            )
             if response.status_code == 200:
                 return JsonResponse(response.json())
             else:
